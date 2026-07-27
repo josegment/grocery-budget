@@ -90,7 +90,7 @@
     flex-direction: column;
     gap: 10px;
   }
-  .add input {
+  .add input.txt {
     width: 100%;
     font: inherit;
     font-size: 17px;
@@ -101,9 +101,47 @@
     color: var(--ink);
     min-height: 52px;
   }
-  .add input:focus { outline: 2px solid var(--green); outline-offset: -1px; border-color: transparent; }
+  .add input.txt:focus { outline: 2px solid var(--green); outline-offset: -1px; border-color: transparent; }
   .add input#amount { font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; }
-  .add button {
+  .photo-attach {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 52px;
+  }
+  .photo-btn {
+    font: inherit;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--ink);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px 16px;
+    min-height: 52px;
+    cursor: pointer;
+  }
+  .photo-btn:active { opacity: .85; }
+  .photo-preview { position: relative; flex-shrink: 0; }
+  .photo-preview img { width: 52px; height: 52px; object-fit: cover; border-radius: 10px; display: block; border: 1px solid var(--line); }
+  .photo-preview .rm {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--ink);
+    color: #fff;
+    border: 2px solid var(--card);
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .add button.submit {
     font: inherit;
     font-size: 17px;
     font-weight: 650;
@@ -114,7 +152,7 @@
     color: #fff;
     cursor: pointer;
   }
-  .add button:active { opacity: .85; }
+  .add button.submit:active { opacity: .85; }
 
   .history { display: flex; flex-direction: column; gap: 0; }
   .history .eyebrow { margin: 6px 4px 8px; }
@@ -122,11 +160,23 @@
     background: var(--card);
     border: 1px solid var(--line);
     border-radius: 12px;
-    padding: 12px 8px 12px 14px;
+    padding: 12px 8px 12px 12px;
     display: flex;
     align-items: center;
     gap: 10px;
     margin-bottom: 8px;
+  }
+  .entry .thumb {
+    width: 46px;
+    height: 46px;
+    flex-shrink: 0;
+    border-radius: 9px;
+    object-fit: cover;
+    background: var(--line);
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    display: block;
   }
   .entry .info { flex: 1; min-width: 0; }
   .entry .amt { font-size: 17px; font-weight: 650; font-variant-numeric: tabular-nums; }
@@ -163,6 +213,7 @@
   }
   .entry .edit-fields input:focus { outline: 2px solid var(--green); outline-offset: -1px; border-color: transparent; }
   .entry .edit-fields input.e-amt { font-weight: 650; font-variant-numeric: tabular-nums; }
+  .entry .edit-photo { display: flex; align-items: center; gap: 10px; }
   .entry .edit-actions { display: flex; gap: 8px; }
   .entry .edit-actions button {
     font: inherit;
@@ -177,6 +228,32 @@
   .entry .edit-actions .esave { background: var(--ink); color: #fff; }
   .entry .edit-actions .ecancel { background: var(--line); color: var(--ink); }
   .entry .edit-actions button:active { opacity: .85; }
+
+  .modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.88);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    z-index: 50;
+  }
+  .modal[hidden] { display: none; }
+  .modal img { max-width: 100%; max-height: 100%; border-radius: 8px; }
+  .modal .close {
+    position: absolute;
+    top: calc(12px + env(safe-area-inset-top));
+    right: 16px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+    border: 0;
+    font-size: 22px;
+    cursor: pointer;
+  }
 </style>
 
 <div class="wrap">
@@ -201,15 +278,28 @@
   </section>
 
   <form class="add" id="addForm" autocomplete="off">
-    <input id="amount" type="text" inputmode="decimal" placeholder="Сумма, zł" aria-label="Сумма в злотых">
-    <input id="note" type="text" placeholder="Заметка (необязательно)" aria-label="Заметка" maxlength="80">
-    <button type="submit">Добавить</button>
+    <input class="txt" id="amount" type="text" inputmode="decimal" placeholder="Сумма, zł" aria-label="Сумма в злотых">
+    <input class="txt" id="note" type="text" placeholder="Заметка (необязательно)" aria-label="Заметка" maxlength="80">
+    <div class="photo-attach">
+      <button type="button" class="photo-btn" id="addPhotoBtn">📷 Добавить фото</button>
+      <div class="photo-preview" id="addPhotoPreview" hidden>
+        <img id="addPhotoImg" alt="Предпросмотр фото">
+        <button type="button" class="rm" id="addPhotoRemove" aria-label="Убрать фото">✕</button>
+      </div>
+    </div>
+    <input type="file" id="addPhotoInput" accept="image/*" hidden>
+    <button type="submit" class="submit">Добавить</button>
   </form>
 
   <section class="history">
     <div class="eyebrow">История</div>
     <div id="list"></div>
   </section>
+</div>
+
+<div class="modal" id="modal" hidden>
+  <button type="button" class="close" id="modalClose" aria-label="Закрыть">✕</button>
+  <img id="modalImg" alt="Фото траты">
 </div>
 
 <script>
@@ -226,6 +316,69 @@
   }
   function save(items) { localStorage.setItem(KEY, JSON.stringify(items)); }
 
+  // --- Фото: хранилище в IndexedDB ---
+  var DB_NAME = 'grocery-budget-db';
+  var STORE = 'photos';
+  function openDB() {
+    return new Promise(function (res, rej) {
+      var r = indexedDB.open(DB_NAME, 1);
+      r.onupgradeneeded = function () { r.result.createObjectStore(STORE); };
+      r.onsuccess = function () { res(r.result); };
+      r.onerror = function () { rej(r.error); };
+    });
+  }
+  function putPhoto(id, blob) {
+    return openDB().then(function (db) {
+      return new Promise(function (res, rej) {
+        var tx = db.transaction(STORE, 'readwrite');
+        tx.objectStore(STORE).put(blob, id);
+        tx.oncomplete = function () { res(); };
+        tx.onerror = function () { rej(tx.error); };
+      });
+    });
+  }
+  function getPhoto(id) {
+    return openDB().then(function (db) {
+      return new Promise(function (res, rej) {
+        var tx = db.transaction(STORE, 'readonly');
+        var rq = tx.objectStore(STORE).get(id);
+        rq.onsuccess = function () { res(rq.result); };
+        rq.onerror = function () { rej(rq.error); };
+      });
+    });
+  }
+  function delPhoto(id) {
+    return openDB().then(function (db) {
+      return new Promise(function (res, rej) {
+        var tx = db.transaction(STORE, 'readwrite');
+        tx.objectStore(STORE).delete(id);
+        tx.oncomplete = function () { res(); };
+        tx.onerror = function () { rej(tx.error); };
+      });
+    }).catch(function () {});
+  }
+
+  // Сжатие фото до разумного размера (макс. сторона 1200px, JPEG)
+  function compress(file) {
+    return new Promise(function (res, rej) {
+      var img = new Image();
+      var url = URL.createObjectURL(file);
+      img.onload = function () {
+        URL.revokeObjectURL(url);
+        var max = 1200;
+        var w = img.width, h = img.height;
+        if (w > h && w > max) { h = Math.round(h * max / w); w = max; }
+        else if (h >= w && h > max) { w = Math.round(w * max / h); h = max; }
+        var c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        c.toBlob(function (b) { res(b || file); }, 'image/jpeg', 0.72);
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); rej(new Error('img')); };
+      img.src = url;
+    });
+  }
+
   function zl(n) {
     var s = (Math.round(n * 100) / 100).toFixed(2).replace('.', ',').replace(/,00$/, '');
     return s + ' zł';
@@ -239,8 +392,31 @@
   var fmtFull = new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
   var editingId = null;
+  var objectUrls = [];
+  function freeUrls() {
+    objectUrls.forEach(function (u) { URL.revokeObjectURL(u); });
+    objectUrls = [];
+  }
+
+  function openModal(id) {
+    getPhoto(id).then(function (blob) {
+      if (!blob) return;
+      var u = URL.createObjectURL(blob);
+      var modal = document.getElementById('modal');
+      var mimg = document.getElementById('modalImg');
+      mimg.onload = function () { URL.revokeObjectURL(u); };
+      mimg.src = u;
+      modal.hidden = false;
+    });
+  }
+  function closeModal() {
+    var modal = document.getElementById('modal');
+    modal.hidden = true;
+    document.getElementById('modalImg').removeAttribute('src');
+  }
 
   function render() {
+    freeUrls();
     var items = load();
     var spent = items.reduce(function (s, it) { return s + it.amount; }, 0);
     var left = TOTAL - spent;
@@ -316,6 +492,72 @@
         fields.appendChild(amtInput);
         fields.appendChild(noteInput);
 
+        // Фото в режиме редактирования
+        var photoRow = document.createElement('div');
+        photoRow.className = 'edit-photo';
+        var pendingBlob = null;      // новый выбранный файл
+        var removePhoto = false;     // пометка на удаление
+        var fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = 'image/*';
+        fileInput.hidden = true;
+
+        var previewWrap = document.createElement('div');
+        previewWrap.className = 'photo-preview';
+        previewWrap.hidden = true;
+        var previewImg = document.createElement('img');
+        previewImg.alt = 'Фото';
+        var previewRm = document.createElement('button');
+        previewRm.type = 'button';
+        previewRm.className = 'rm';
+        previewRm.textContent = '✕';
+        previewRm.setAttribute('aria-label', 'Убрать фото');
+        previewWrap.appendChild(previewImg);
+        previewWrap.appendChild(previewRm);
+
+        var photoBtn = document.createElement('button');
+        photoBtn.type = 'button';
+        photoBtn.className = 'photo-btn';
+
+        function refreshPhotoBtn() {
+          photoBtn.textContent = (previewWrap.hidden ? '📷 Добавить фото' : '📷 Заменить фото');
+        }
+        function showPreviewFromBlob(blob) {
+          var u = URL.createObjectURL(blob);
+          objectUrls.push(u);
+          previewImg.src = u;
+          previewWrap.hidden = false;
+          refreshPhotoBtn();
+        }
+        // показать существующее фото, если есть
+        if (it.hasPhoto) {
+          getPhoto(it.id).then(function (blob) {
+            if (blob && !removePhoto && !pendingBlob) showPreviewFromBlob(blob);
+          });
+        }
+        photoBtn.addEventListener('click', function () { fileInput.click(); });
+        fileInput.addEventListener('change', function () {
+          var f = fileInput.files && fileInput.files[0];
+          if (!f) return;
+          compress(f).then(function (blob) {
+            pendingBlob = blob;
+            removePhoto = false;
+            showPreviewFromBlob(blob);
+          }).catch(function () { alert('Не удалось обработать фото'); });
+        });
+        previewRm.addEventListener('click', function () {
+          pendingBlob = null;
+          removePhoto = true;
+          previewImg.removeAttribute('src');
+          previewWrap.hidden = true;
+          fileInput.value = '';
+          refreshPhotoBtn();
+        });
+        refreshPhotoBtn();
+        photoRow.appendChild(photoBtn);
+        photoRow.appendChild(previewWrap);
+        photoRow.appendChild(fileInput);
+
         var actions = document.createElement('div');
         actions.className = 'edit-actions';
         var saveBtn = document.createElement('button');
@@ -333,16 +575,27 @@
           var v = parseFloat(amtInput.value.replace(',', '.'));
           if (!isFinite(v) || v <= 0) { amtInput.focus(); return; }
           var all = load();
+          var target = null;
           for (var i = 0; i < all.length; i++) {
-            if (all[i].id === it.id) {
-              all[i].amount = Math.round(v * 100) / 100;
-              all[i].note = noteInput.value.trim();
-              break;
-            }
+            if (all[i].id === it.id) { target = all[i]; break; }
           }
-          save(all);
-          editingId = null;
-          render();
+          if (!target) { editingId = null; render(); return; }
+          target.amount = Math.round(v * 100) / 100;
+          target.note = noteInput.value.trim();
+
+          var photoOp = Promise.resolve();
+          if (pendingBlob) {
+            photoOp = putPhoto(it.id, pendingBlob);
+            target.hasPhoto = true;
+          } else if (removePhoto) {
+            photoOp = delPhoto(it.id);
+            target.hasPhoto = false;
+          }
+          photoOp.then(function () {
+            save(all);
+            editingId = null;
+            render();
+          });
         }
         saveBtn.addEventListener('click', commitEdit);
         amtInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') commitEdit(); });
@@ -350,9 +603,23 @@
         cancelBtn.addEventListener('click', function () { editingId = null; render(); });
 
         row.appendChild(fields);
+        row.appendChild(photoRow);
         row.appendChild(actions);
         list.appendChild(row);
         return;
+      }
+
+      if (it.hasPhoto) {
+        var thumb = document.createElement('img');
+        thumb.className = 'thumb';
+        thumb.alt = 'Фото траты';
+        (function (id) {
+          getPhoto(id).then(function (blob) {
+            if (blob) { var u = URL.createObjectURL(blob); objectUrls.push(u); thumb.src = u; }
+          });
+        })(it.id);
+        thumb.addEventListener('click', function () { openModal(it.id); });
+        row.appendChild(thumb);
       }
 
       var info = document.createElement('div');
@@ -383,6 +650,7 @@
       del.textContent = '✕';
       del.setAttribute('aria-label', 'Удалить трату ' + zl(it.amount));
       del.addEventListener('click', function () {
+        delPhoto(it.id);
         save(load().filter(function (x) { return x.id !== it.id; }));
         render();
       });
@@ -395,24 +663,61 @@
     });
   }
 
+  // --- Прикрепление фото в форме добавления ---
+  var addPendingBlob = null;
+  document.getElementById('addPhotoBtn').addEventListener('click', function () {
+    document.getElementById('addPhotoInput').click();
+  });
+  document.getElementById('addPhotoInput').addEventListener('change', function () {
+    var f = this.files && this.files[0];
+    if (!f) return;
+    compress(f).then(function (blob) {
+      addPendingBlob = blob;
+      var u = URL.createObjectURL(blob);
+      var img = document.getElementById('addPhotoImg');
+      img.onload = function () { URL.revokeObjectURL(u); };
+      img.src = u;
+      document.getElementById('addPhotoPreview').hidden = false;
+    }).catch(function () { alert('Не удалось обработать фото'); });
+  });
+  function clearAddPhoto() {
+    addPendingBlob = null;
+    document.getElementById('addPhotoInput').value = '';
+    document.getElementById('addPhotoImg').removeAttribute('src');
+    document.getElementById('addPhotoPreview').hidden = true;
+  }
+  document.getElementById('addPhotoRemove').addEventListener('click', clearAddPhoto);
+
   document.getElementById('addForm').addEventListener('submit', function (ev) {
     ev.preventDefault();
     var amountEl = document.getElementById('amount');
     var noteEl = document.getElementById('note');
     var amount = parseFloat(amountEl.value.replace(',', '.'));
     if (!isFinite(amount) || amount <= 0) { amountEl.focus(); return; }
+    var id = Date.now() + '-' + Math.random().toString(36).slice(2, 7);
     var items = load();
-    items.push({
-      id: Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+    var entry = {
+      id: id,
       amount: Math.round(amount * 100) / 100,
       note: noteEl.value.trim(),
-      ts: Date.now()
+      ts: Date.now(),
+      hasPhoto: !!addPendingBlob
+    };
+    var photoOp = addPendingBlob ? putPhoto(id, addPendingBlob) : Promise.resolve();
+    photoOp.then(function () {
+      items.push(entry);
+      save(items);
+      amountEl.value = '';
+      noteEl.value = '';
+      clearAddPhoto();
+      amountEl.focus();
+      render();
     });
-    save(items);
-    amountEl.value = '';
-    noteEl.value = '';
-    amountEl.focus();
-    render();
+  });
+
+  document.getElementById('modalClose').addEventListener('click', closeModal);
+  document.getElementById('modal').addEventListener('click', function (e) {
+    if (e.target === this) closeModal();
   });
 
   render();
