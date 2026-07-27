@@ -1,1 +1,307 @@
-placeholder
+<title>Бюджет на продукты</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+  :root {
+    --bg: #FAFAF8;
+    --card: #FFFFFF;
+    --ink: #1A1D1C;
+    --muted: #6E7573;
+    --line: #E7EAE6;
+    --green: #1E7A4C;
+    --green-soft: #E4F1EA;
+    --orange: #D97706;
+    --red: #DC2626;
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+    line-height: 1.4;
+    padding: 20px 16px calc(28px + env(safe-area-inset-bottom));
+  }
+  .wrap { max-width: 460px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+
+  .eyebrow {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: lowercase;
+    color: var(--muted);
+  }
+
+  .hero {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 20px 18px 18px;
+  }
+  .hero .big {
+    font-size: 46px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    margin: 6px 0 2px;
+  }
+  .hero .big.over { color: var(--red); }
+  .hero .sub { color: var(--muted); font-size: 15px; }
+  .hero .stats {
+    display: flex;
+    gap: 10px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+  }
+  .stat { flex: 1; }
+  .stat .v { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .stat .l { font-size: 13px; color: var(--muted); margin-top: 1px; }
+
+  .week {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+  }
+  .week .row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .week .left-amt { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .week .left-amt.over { color: var(--red); }
+  .week .of { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .bar {
+    height: 10px;
+    border-radius: 5px;
+    background: var(--line);
+    margin-top: 12px;
+    overflow: hidden;
+  }
+  .bar > div { height: 100%; border-radius: 5px; width: 0; transition: width .3s ease; }
+  .bar .ok { background: var(--green); }
+  .bar .warn { background: var(--orange); }
+  .bar .bad { background: var(--red); }
+  .week .range { font-size: 13px; color: var(--muted); margin-top: 8px; }
+
+  form.add {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .add input {
+    width: 100%;
+    font: inherit;
+    font-size: 17px;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--bg);
+    color: var(--ink);
+    min-height: 52px;
+  }
+  .add input:focus { outline: 2px solid var(--green); outline-offset: -1px; border-color: transparent; }
+  .add input#amount { font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .add button {
+    font: inherit;
+    font-size: 17px;
+    font-weight: 650;
+    min-height: 52px;
+    border: 0;
+    border-radius: 12px;
+    background: var(--ink);
+    color: #fff;
+    cursor: pointer;
+  }
+  .add button:active { opacity: .85; }
+
+  .history { display: flex; flex-direction: column; gap: 0; }
+  .history .eyebrow { margin: 6px 4px 8px; }
+  .entry {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px 8px 12px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .entry .info { flex: 1; min-width: 0; }
+  .entry .amt { font-size: 17px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .entry .meta { font-size: 13.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .entry .del {
+    font: inherit;
+    font-size: 17px;
+    color: var(--muted);
+    background: none;
+    border: 0;
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .entry .del:active { background: var(--line); color: var(--red); }
+  .empty { color: var(--muted); font-size: 15px; text-align: center; padding: 18px 0 6px; }
+</style>
+
+<div class="wrap">
+  <section class="hero">
+    <div class="eyebrow">Осталось до 22 августа</div>
+    <div class="big" id="totalLeft">—</div>
+    <div class="sub" id="totalSub"></div>
+    <div class="stats">
+      <div class="stat"><div class="v" id="daysLeft">—</div><div class="l">дней осталось</div></div>
+      <div class="stat"><div class="v" id="perDay">—</div><div class="l">в день в среднем</div></div>
+    </div>
+  </section>
+
+  <section class="week">
+    <div class="eyebrow" id="weekTitle">Эта неделя</div>
+    <div class="row" style="margin-top:6px">
+      <div class="left-amt" id="weekLeft">—</div>
+      <div class="of">из 155 zł</div>
+    </div>
+    <div class="bar"><div id="weekBar" class="ok"></div></div>
+    <div class="range" id="weekRange"></div>
+  </section>
+
+  <form class="add" id="addForm" autocomplete="off">
+    <input id="amount" type="text" inputmode="decimal" placeholder="Сумма, zł" aria-label="Сумма в злотых">
+    <input id="note" type="text" placeholder="Заметка (необязательно)" aria-label="Заметка" maxlength="80">
+    <button type="submit">Добавить</button>
+  </form>
+
+  <section class="history">
+    <div class="eyebrow">История</div>
+    <div id="list"></div>
+  </section>
+</div>
+
+<script>
+  var TOTAL = 664;
+  var WEEK_BUDGET = 155;
+  var START = new Date(2026, 6, 27);  // 27 июля 2026
+  var END = new Date(2026, 7, 22);    // 22 августа 2026 включительно
+  var DAY = 86400000;
+  var KEY = 'grocery-budget-664';
+
+  function load() {
+    try { return JSON.parse(localStorage.getItem(KEY)) || []; }
+    catch (e) { return []; }
+  }
+  function save(items) { localStorage.setItem(KEY, JSON.stringify(items)); }
+
+  function zl(n) {
+    var s = (Math.round(n * 100) / 100).toFixed(2).replace('.', ',').replace(/,00$/, '');
+    return s + ' zł';
+  }
+  function today0() {
+    var n = new Date();
+    return new Date(n.getFullYear(), n.getMonth(), n.getDate());
+  }
+
+  var fmtDay = new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'short' });
+  var fmtFull = new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+  function render() {
+    var items = load();
+    var spent = items.reduce(function (s, it) { return s + it.amount; }, 0);
+    var left = TOTAL - spent;
+
+    var t = today0();
+    var ended = t > END;
+    var days = ended ? 0 : Math.round((END - Math.max(t, START)) / DAY) + 1;
+
+    var elTotal = document.getElementById('totalLeft');
+    elTotal.textContent = zl(left);
+    elTotal.classList.toggle('over', left < 0);
+    document.getElementById('totalSub').textContent =
+      'потрачено ' + zl(spent) + ' из ' + TOTAL + ' zł';
+    document.getElementById('daysLeft').textContent = days;
+    document.getElementById('perDay').textContent =
+      days > 0 ? zl(Math.max(left, 0) / days) : '—';
+
+    var idx = Math.min(Math.max(Math.floor((t - START) / DAY / 7), 0), 3);
+    var wStart = new Date(START.getTime() + idx * 7 * DAY);
+    var wEnd = new Date(Math.min(wStart.getTime() + 6 * DAY, END.getTime()));
+    var weekSpent = items.reduce(function (s, it) {
+      var d = new Date(it.ts);
+      var d0 = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      return (d0 >= wStart && d0 <= wEnd) ? s + it.amount : s;
+    }, 0);
+    var weekLeft = WEEK_BUDGET - weekSpent;
+
+    document.getElementById('weekTitle').textContent = ended ? 'Период завершён' : 'Неделя ' + (idx + 1) + ' из 4';
+    var elWeekLeft = document.getElementById('weekLeft');
+    elWeekLeft.textContent = zl(weekLeft);
+    elWeekLeft.classList.toggle('over', weekLeft < 0);
+    document.getElementById('weekRange').textContent =
+      fmtDay.format(wStart) + ' — ' + fmtDay.format(wEnd) + ' · потрачено ' + zl(weekSpent);
+
+    var pct = Math.min(weekSpent / WEEK_BUDGET, 1);
+    var bar = document.getElementById('weekBar');
+    bar.style.width = (pct * 100) + '%';
+    bar.className = pct < 0.6 ? 'ok' : (pct < 0.9 ? 'warn' : 'bad');
+
+    var list = document.getElementById('list');
+    list.innerHTML = '';
+    if (!items.length) {
+      var e = document.createElement('div');
+      e.className = 'empty';
+      e.textContent = 'Пока нет трат — добавьте первую выше';
+      list.appendChild(e);
+      return;
+    }
+    items.slice().sort(function (a, b) { return b.ts - a.ts; }).forEach(function (it) {
+      var row = document.createElement('div');
+      row.className = 'entry';
+      var info = document.createElement('div');
+      info.className = 'info';
+      var amt = document.createElement('div');
+      amt.className = 'amt';
+      amt.textContent = zl(it.amount);
+      var meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.textContent = fmtFull.format(new Date(it.ts)) + (it.note ? ' · ' + it.note : '');
+      info.appendChild(amt);
+      info.appendChild(meta);
+      var del = document.createElement('button');
+      del.className = 'del';
+      del.type = 'button';
+      del.textContent = '✕';
+      del.setAttribute('aria-label', 'Удалить трату ' + zl(it.amount));
+      del.addEventListener('click', function () {
+        save(load().filter(function (x) { return x.id !== it.id; }));
+        render();
+      });
+      row.appendChild(info);
+      row.appendChild(del);
+      list.appendChild(row);
+    });
+  }
+
+  document.getElementById('addForm').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var amountEl = document.getElementById('amount');
+    var noteEl = document.getElementById('note');
+    var amount = parseFloat(amountEl.value.replace(',', '.'));
+    if (!isFinite(amount) || amount <= 0) { amountEl.focus(); return; }
+    var items = load();
+    items.push({
+      id: Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+      amount: Math.round(amount * 100) / 100,
+      note: noteEl.value.trim(),
+      ts: Date.now()
+    });
+    save(items);
+    amountEl.value = '';
+    noteEl.value = '';
+    amountEl.focus();
+    render();
+  });
+
+  render();
+</script>
