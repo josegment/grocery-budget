@@ -131,7 +131,8 @@
   .entry .info { flex: 1; min-width: 0; }
   .entry .amt { font-size: 17px; font-weight: 650; font-variant-numeric: tabular-nums; }
   .entry .meta { font-size: 13.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .entry .del {
+  .entry .actions { display: flex; flex-shrink: 0; }
+  .entry .iconbtn {
     font: inherit;
     font-size: 17px;
     color: var(--muted);
@@ -143,8 +144,39 @@
     cursor: pointer;
     flex-shrink: 0;
   }
+  .entry .edit:active { background: var(--line); color: var(--ink); }
   .entry .del:active { background: var(--line); color: var(--red); }
   .empty { color: var(--muted); font-size: 15px; text-align: center; padding: 18px 0 6px; }
+
+  .entry.editing { flex-direction: column; align-items: stretch; gap: 8px; padding: 12px 14px; }
+  .entry .edit-fields { display: flex; flex-direction: column; gap: 8px; }
+  .entry .edit-fields input {
+    width: 100%;
+    font: inherit;
+    font-size: 17px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--bg);
+    color: var(--ink);
+    min-height: 48px;
+  }
+  .entry .edit-fields input:focus { outline: 2px solid var(--green); outline-offset: -1px; border-color: transparent; }
+  .entry .edit-fields input.e-amt { font-weight: 650; font-variant-numeric: tabular-nums; }
+  .entry .edit-actions { display: flex; gap: 8px; }
+  .entry .edit-actions button {
+    font: inherit;
+    font-size: 16px;
+    font-weight: 650;
+    min-height: 48px;
+    flex: 1;
+    border: 0;
+    border-radius: 10px;
+    cursor: pointer;
+  }
+  .entry .edit-actions .esave { background: var(--ink); color: #fff; }
+  .entry .edit-actions .ecancel { background: var(--line); color: var(--ink); }
+  .entry .edit-actions button:active { opacity: .85; }
 </style>
 
 <div class="wrap">
@@ -206,6 +238,8 @@
   var fmtDay = new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'short' });
   var fmtFull = new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
+  var editingId = null;
+
   function render() {
     var items = load();
     var spent = items.reduce(function (s, it) { return s + it.amount; }, 0);
@@ -224,6 +258,7 @@
     document.getElementById('perDay').textContent =
       days > 0 ? zl(Math.max(left, 0) / days) : '—';
 
+    // Неделя: блоки по 7 дней от 27 июля
     var idx = Math.min(Math.max(Math.floor((t - START) / DAY / 7), 0), 3);
     var wStart = new Date(START.getTime() + idx * 7 * DAY);
     var wEnd = new Date(Math.min(wStart.getTime() + 6 * DAY, END.getTime()));
@@ -246,6 +281,7 @@
     bar.style.width = (pct * 100) + '%';
     bar.className = pct < 0.6 ? 'ok' : (pct < 0.9 ? 'warn' : 'bad');
 
+    // История
     var list = document.getElementById('list');
     list.innerHTML = '';
     if (!items.length) {
@@ -258,6 +294,67 @@
     items.slice().sort(function (a, b) { return b.ts - a.ts; }).forEach(function (it) {
       var row = document.createElement('div');
       row.className = 'entry';
+
+      if (editingId === it.id) {
+        row.className = 'entry editing';
+
+        var fields = document.createElement('div');
+        fields.className = 'edit-fields';
+        var amtInput = document.createElement('input');
+        amtInput.className = 'e-amt';
+        amtInput.type = 'text';
+        amtInput.setAttribute('inputmode', 'decimal');
+        amtInput.value = String(it.amount).replace('.', ',');
+        amtInput.setAttribute('aria-label', 'Сумма');
+        var noteInput = document.createElement('input');
+        noteInput.className = 'e-note';
+        noteInput.type = 'text';
+        noteInput.maxLength = 80;
+        noteInput.placeholder = 'Заметка (необязательно)';
+        noteInput.value = it.note || '';
+        noteInput.setAttribute('aria-label', 'Заметка');
+        fields.appendChild(amtInput);
+        fields.appendChild(noteInput);
+
+        var actions = document.createElement('div');
+        actions.className = 'edit-actions';
+        var saveBtn = document.createElement('button');
+        saveBtn.className = 'esave';
+        saveBtn.type = 'button';
+        saveBtn.textContent = 'Сохранить';
+        var cancelBtn = document.createElement('button');
+        cancelBtn.className = 'ecancel';
+        cancelBtn.type = 'button';
+        cancelBtn.textContent = 'Отмена';
+        actions.appendChild(saveBtn);
+        actions.appendChild(cancelBtn);
+
+        function commitEdit() {
+          var v = parseFloat(amtInput.value.replace(',', '.'));
+          if (!isFinite(v) || v <= 0) { amtInput.focus(); return; }
+          var all = load();
+          for (var i = 0; i < all.length; i++) {
+            if (all[i].id === it.id) {
+              all[i].amount = Math.round(v * 100) / 100;
+              all[i].note = noteInput.value.trim();
+              break;
+            }
+          }
+          save(all);
+          editingId = null;
+          render();
+        }
+        saveBtn.addEventListener('click', commitEdit);
+        amtInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') commitEdit(); });
+        noteInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') commitEdit(); });
+        cancelBtn.addEventListener('click', function () { editingId = null; render(); });
+
+        row.appendChild(fields);
+        row.appendChild(actions);
+        list.appendChild(row);
+        return;
+      }
+
       var info = document.createElement('div');
       info.className = 'info';
       var amt = document.createElement('div');
@@ -268,8 +365,20 @@
       meta.textContent = fmtFull.format(new Date(it.ts)) + (it.note ? ' · ' + it.note : '');
       info.appendChild(amt);
       info.appendChild(meta);
+
+      var acts = document.createElement('div');
+      acts.className = 'actions';
+      var edit = document.createElement('button');
+      edit.className = 'iconbtn edit';
+      edit.type = 'button';
+      edit.textContent = '✎';
+      edit.setAttribute('aria-label', 'Редактировать трату ' + zl(it.amount));
+      edit.addEventListener('click', function () {
+        editingId = it.id;
+        render();
+      });
       var del = document.createElement('button');
-      del.className = 'del';
+      del.className = 'iconbtn del';
       del.type = 'button';
       del.textContent = '✕';
       del.setAttribute('aria-label', 'Удалить трату ' + zl(it.amount));
@@ -277,8 +386,11 @@
         save(load().filter(function (x) { return x.id !== it.id; }));
         render();
       });
+      acts.appendChild(edit);
+      acts.appendChild(del);
+
       row.appendChild(info);
-      row.appendChild(del);
+      row.appendChild(acts);
       list.appendChild(row);
     });
   }
