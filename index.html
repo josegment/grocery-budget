@@ -354,7 +354,7 @@
     appId: "1:107806746639:web:77f44b6344d1c4198c1b7a"
   };
   var fbApp = initializeApp(firebaseConfig);
-  var db = getFirestore(fbApp);
+  var db = getFirestore(fbApp, 'grocery-budget');
   var expensesCol = collection(db, 'expenses');
   var budgetDocRef = doc(db, 'meta', 'budget');
 
