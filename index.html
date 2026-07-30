@@ -339,28 +339,35 @@
   <img id="modalImg" alt="Фото траты">
 </div>
 
-<script>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+  import {
+    getFirestore, collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot
+  } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+  var firebaseConfig = {
+    apiKey: "AIzaSyAPJbVrAp_9kkKAIv_amOkAa-ccyE57Os8",
+    authDomain: "grocery-budget-34b85.firebaseapp.com",
+    projectId: "grocery-budget-34b85",
+    storageBucket: "grocery-budget-34b85.firebasestorage.app",
+    messagingSenderId: "107806746639",
+    appId: "1:107806746639:web:77f44b6344d1c4198c1b7a"
+  };
+  var fbApp = initializeApp(firebaseConfig);
+  var db = getFirestore(fbApp);
+  var expensesCol = collection(db, 'expenses');
+  var budgetDocRef = doc(db, 'meta', 'budget');
+
   var DEFAULT_TOTAL = 664;
   var START = new Date(2026, 6, 27);  // 27 июля 2026
   var END = new Date(2026, 7, 22);    // 22 августа 2026 включительно
   var DAY = 86400000;
-  var KEY = 'grocery-budget-664';
-  var BKEY = 'grocery-budget-total';
 
-  function load() {
-    try { return JSON.parse(localStorage.getItem(KEY)) || []; }
-    catch (e) { return []; }
-  }
-  function save(items) { localStorage.setItem(KEY, JSON.stringify(items)); }
+  var TOTAL = DEFAULT_TOTAL;
+  var itemsCache = [];
+  function load() { return itemsCache; }
 
-  function loadTotal() {
-    var v = parseFloat(localStorage.getItem(BKEY));
-    return (isFinite(v) && v > 0) ? v : DEFAULT_TOTAL;
-  }
-  function saveTotal(v) { localStorage.setItem(BKEY, String(v)); }
-  var TOTAL = loadTotal();
-
-  // --- Фото: хранилище в IndexedDB ---
+  // --- Фото: хранилище в IndexedDB (локально на устройстве) ---
   var DB_NAME = 'grocery-budget-db';
   var STORE = 'photos';
   function openDB() {
@@ -461,7 +468,6 @@
 
   function render() {
     freeUrls();
-    TOTAL = loadTotal();
     var items = load();
     var spent = items.reduce(function (s, it) { return s + it.amount; }, 0);
     var left = TOTAL - spent;
@@ -623,25 +629,22 @@
         function commitEdit() {
           var v = parseFloat(amtInput.value.replace(',', '.'));
           if (!isFinite(v) || v <= 0) { amtInput.focus(); return; }
-          var all = load();
-          var target = null;
-          for (var i = 0; i < all.length; i++) {
-            if (all[i].id === it.id) { target = all[i]; break; }
-          }
-          if (!target) { editingId = null; render(); return; }
-          target.amount = Math.round(v * 100) / 100;
-          target.note = noteInput.value.trim();
+          var patch = {
+            amount: Math.round(v * 100) / 100,
+            note: noteInput.value.trim()
+          };
 
           var photoOp = Promise.resolve();
           if (pendingBlob) {
             photoOp = putPhoto(it.id, pendingBlob);
-            target.hasPhoto = true;
+            patch.hasPhoto = true;
           } else if (removePhoto) {
             photoOp = delPhoto(it.id);
-            target.hasPhoto = false;
+            patch.hasPhoto = false;
           }
           photoOp.then(function () {
-            save(all);
+            return updateDoc(doc(db, 'expenses', it.id), patch);
+          }).then(function () {
             editingId = null;
             render();
           });
@@ -700,8 +703,7 @@
       del.setAttribute('aria-label', 'Удалить трату ' + zl(it.amount));
       del.addEventListener('click', function () {
         delPhoto(it.id);
-        save(load().filter(function (x) { return x.id !== it.id; }));
-        render();
+        deleteDoc(doc(db, 'expenses', it.id));
       });
       acts.appendChild(edit);
       acts.appendChild(del);
@@ -744,9 +746,7 @@
     var amount = parseFloat(amountEl.value.replace(',', '.'));
     if (!isFinite(amount) || amount <= 0) { amountEl.focus(); return; }
     var id = Date.now() + '-' + Math.random().toString(36).slice(2, 7);
-    var items = load();
     var entry = {
-      id: id,
       amount: Math.round(amount * 100) / 100,
       note: noteEl.value.trim(),
       ts: Date.now(),
@@ -754,13 +754,12 @@
     };
     var photoOp = addPendingBlob ? putPhoto(id, addPendingBlob) : Promise.resolve();
     photoOp.then(function () {
-      items.push(entry);
-      save(items);
+      return setDoc(doc(db, 'expenses', id), entry);
+    }).then(function () {
       amountEl.value = '';
       noteEl.value = '';
       clearAddPhoto();
       amountEl.focus();
-      render();
     });
   });
 
@@ -772,7 +771,7 @@
   // --- Редактирование общего бюджета (инлайн, живое сохранение) ---
   function openBudgetEdit() {
     var inp = document.getElementById('budgetInput');
-    inp.value = String(loadTotal()).replace('.', ',');
+    inp.value = String(TOTAL).replace('.', ',');
     document.getElementById('budgetEdit').hidden = false;
     document.getElementById('budgetBtn').hidden = true;
     inp.focus();
@@ -786,11 +785,30 @@
   // сохраняем прямо во время ввода — всё пересчитывается на лету
   document.getElementById('budgetInput').addEventListener('input', function () {
     var v = parseFloat(this.value.replace(',', '.'));
-    if (isFinite(v) && v > 0) { saveTotal(Math.round(v * 100) / 100); render(); }
+    if (isFinite(v) && v > 0) {
+      TOTAL = Math.round(v * 100) / 100;
+      render();
+      setDoc(budgetDocRef, { total: TOTAL });
+    }
   });
   document.getElementById('budgetInput').addEventListener('blur', closeBudgetEdit);
   document.getElementById('budgetInput').addEventListener('keydown', function (e) {
     if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); closeBudgetEdit(); }
+  });
+
+  onSnapshot(expensesCol, function (snapshot) {
+    itemsCache = snapshot.docs.map(function (d) {
+      var data = d.data();
+      data.id = d.id;
+      return data;
+    });
+    render();
+  });
+
+  onSnapshot(budgetDocRef, function (snap) {
+    var data = snap.data();
+    TOTAL = (data && isFinite(data.total) && data.total > 0) ? data.total : DEFAULT_TOTAL;
+    render();
   });
 
   render();
