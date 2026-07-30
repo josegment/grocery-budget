@@ -58,6 +58,37 @@
   .stat .v { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; }
   .stat .l { font-size: 13px; color: var(--muted); margin-top: 1px; }
 
+  .big-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0 2px; }
+  .big-row .big { margin: 0; }
+  .edit-icon {
+    font: inherit;
+    font-size: 18px;
+    color: var(--muted);
+    background: none;
+    border: 0;
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .edit-icon:active { background: var(--line); color: var(--ink); }
+  .budget-edit { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .budget-edit .budget-actions { display: flex; gap: 8px; }
+  .budget-edit .budget-actions button {
+    font: inherit;
+    font-size: 15px;
+    font-weight: 650;
+    min-height: 48px;
+    flex: 1;
+    border: 0;
+    border-radius: 10px;
+    cursor: pointer;
+  }
+  .budget-edit .bsave { background: var(--ink); color: #fff; }
+  .budget-edit .bcancel { background: var(--line); color: var(--ink); }
+  .budget-edit .budget-actions button:active { opacity: .85; }
+
   .week {
     background: var(--card);
     border: 1px solid var(--line);
@@ -259,8 +290,18 @@
 <div class="wrap">
   <section class="hero">
     <div class="eyebrow">Осталось до 22 августа</div>
-    <div class="big" id="totalLeft">—</div>
+    <div class="big-row">
+      <div class="big" id="totalLeft">—</div>
+      <button type="button" class="edit-icon" id="budgetBtn" aria-label="Изменить бюджет">✎</button>
+    </div>
     <div class="sub" id="totalSub"></div>
+    <div class="budget-edit" id="budgetEdit" hidden>
+      <input class="txt" id="budgetInput" type="text" inputmode="decimal" aria-label="Общий бюджет, zł">
+      <div class="budget-actions">
+        <button type="button" class="bsave" id="budgetSave">Сохранить</button>
+        <button type="button" class="bcancel" id="budgetCancel">Отмена</button>
+      </div>
+    </div>
     <div class="stats">
       <div class="stat"><div class="v" id="daysLeft">—</div><div class="l">дней осталось</div></div>
       <div class="stat"><div class="v" id="perDay">—</div><div class="l">в день в среднем</div></div>
@@ -303,18 +344,26 @@
 </div>
 
 <script>
-  var TOTAL = 664;
+  var DEFAULT_TOTAL = 664;
   var WEEK_BUDGET = 155;
   var START = new Date(2026, 6, 27);  // 27 июля 2026
   var END = new Date(2026, 7, 22);    // 22 августа 2026 включительно
   var DAY = 86400000;
   var KEY = 'grocery-budget-664';
+  var BKEY = 'grocery-budget-total';
 
   function load() {
     try { return JSON.parse(localStorage.getItem(KEY)) || []; }
     catch (e) { return []; }
   }
   function save(items) { localStorage.setItem(KEY, JSON.stringify(items)); }
+
+  function loadTotal() {
+    var v = parseFloat(localStorage.getItem(BKEY));
+    return (isFinite(v) && v > 0) ? v : DEFAULT_TOTAL;
+  }
+  function saveTotal(v) { localStorage.setItem(BKEY, String(v)); }
+  var TOTAL = loadTotal();
 
   // --- Фото: хранилище в IndexedDB ---
   var DB_NAME = 'grocery-budget-db';
@@ -417,6 +466,7 @@
 
   function render() {
     freeUrls();
+    TOTAL = loadTotal();
     var items = load();
     var spent = items.reduce(function (s, it) { return s + it.amount; }, 0);
     var left = TOTAL - spent;
@@ -718,6 +768,33 @@
   document.getElementById('modalClose').addEventListener('click', closeModal);
   document.getElementById('modal').addEventListener('click', function (e) {
     if (e.target === this) closeModal();
+  });
+
+  // --- Редактирование общего бюджета ---
+  function closeBudgetEdit() {
+    document.getElementById('budgetEdit').hidden = true;
+    document.getElementById('budgetBtn').hidden = false;
+  }
+  document.getElementById('budgetBtn').addEventListener('click', function () {
+    var inp = document.getElementById('budgetInput');
+    inp.value = String(loadTotal()).replace('.', ',');
+    document.getElementById('budgetEdit').hidden = false;
+    document.getElementById('budgetBtn').hidden = true;
+    inp.focus();
+    inp.select();
+  });
+  document.getElementById('budgetCancel').addEventListener('click', closeBudgetEdit);
+  function commitBudget() {
+    var inp = document.getElementById('budgetInput');
+    var v = parseFloat(inp.value.replace(',', '.'));
+    if (!isFinite(v) || v <= 0) { inp.focus(); return; }
+    saveTotal(Math.round(v * 100) / 100);
+    closeBudgetEdit();
+    render();
+  }
+  document.getElementById('budgetSave').addEventListener('click', commitBudget);
+  document.getElementById('budgetInput').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') commitBudget();
   });
 
   render();
