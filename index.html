@@ -73,21 +73,21 @@
     flex-shrink: 0;
   }
   .edit-icon:active { background: var(--line); color: var(--ink); }
-  .budget-edit { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
-  .budget-edit .budget-actions { display: flex; gap: 8px; }
-  .budget-edit .budget-actions button {
+  .budget-edit { margin-top: 12px; }
+  .budget-edit .txt {
+    width: 100%;
     font: inherit;
-    font-size: 15px;
+    font-size: 22px;
     font-weight: 650;
-    min-height: 48px;
-    flex: 1;
-    border: 0;
-    border-radius: 10px;
-    cursor: pointer;
+    font-variant-numeric: tabular-nums;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--bg);
+    color: var(--ink);
+    min-height: 52px;
   }
-  .budget-edit .bsave { background: var(--ink); color: #fff; }
-  .budget-edit .bcancel { background: var(--line); color: var(--ink); }
-  .budget-edit .budget-actions button:active { opacity: .85; }
+  .budget-edit .txt:focus { outline: 2px solid var(--green); outline-offset: -1px; border-color: transparent; }
 
   .week {
     background: var(--card);
@@ -296,11 +296,7 @@
     </div>
     <div class="sub" id="totalSub"></div>
     <div class="budget-edit" id="budgetEdit" hidden>
-      <input class="txt" id="budgetInput" type="text" inputmode="decimal" aria-label="Общий бюджет, zł">
-      <div class="budget-actions">
-        <button type="button" class="bsave" id="budgetSave">Сохранить</button>
-        <button type="button" class="bcancel" id="budgetCancel">Отмена</button>
-      </div>
+      <input class="txt" id="budgetInput" type="text" inputmode="decimal" placeholder="Общий бюджет, zł" aria-label="Общий бюджет, zł">
     </div>
     <div class="stats">
       <div class="stat"><div class="v" id="daysLeft">—</div><div class="l">дней осталось</div></div>
@@ -770,31 +766,36 @@
     if (e.target === this) closeModal();
   });
 
-  // --- Редактирование общего бюджета ---
-  function closeBudgetEdit() {
-    document.getElementById('budgetEdit').hidden = true;
-    document.getElementById('budgetBtn').hidden = false;
-  }
-  document.getElementById('budgetBtn').addEventListener('click', function () {
+  // --- Редактирование общего бюджета (инлайн, без кнопок) ---
+  var budgetEditing = false;
+  function openBudgetEdit() {
     var inp = document.getElementById('budgetInput');
     inp.value = String(loadTotal()).replace('.', ',');
     document.getElementById('budgetEdit').hidden = false;
     document.getElementById('budgetBtn').hidden = true;
+    budgetEditing = true;
     inp.focus();
     inp.select();
-  });
-  document.getElementById('budgetCancel').addEventListener('click', closeBudgetEdit);
+  }
   function commitBudget() {
+    if (!budgetEditing) return;
+    budgetEditing = false;
     var inp = document.getElementById('budgetInput');
     var v = parseFloat(inp.value.replace(',', '.'));
-    if (!isFinite(v) || v <= 0) { inp.focus(); return; }
-    saveTotal(Math.round(v * 100) / 100);
-    closeBudgetEdit();
+    if (isFinite(v) && v > 0) saveTotal(Math.round(v * 100) / 100);
+    document.getElementById('budgetEdit').hidden = true;
+    document.getElementById('budgetBtn').hidden = false;
     render();
   }
-  document.getElementById('budgetSave').addEventListener('click', commitBudget);
+  document.getElementById('budgetBtn').addEventListener('click', openBudgetEdit);
+  document.getElementById('budgetInput').addEventListener('blur', commitBudget);
   document.getElementById('budgetInput').addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') commitBudget();
+    if (e.key === 'Enter') { e.preventDefault(); this.blur(); }
+    else if (e.key === 'Escape') {
+      budgetEditing = false;
+      document.getElementById('budgetEdit').hidden = true;
+      document.getElementById('budgetBtn').hidden = false;
+    }
   });
 
   render();
