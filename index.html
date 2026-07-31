@@ -359,8 +359,9 @@
   var budgetDocRef = doc(db, 'meta', 'budget');
 
   var DEFAULT_TOTAL = 664;
-  var START = new Date(2026, 6, 27);  // 27 июля 2026
+  var START = new Date(2026, 7, 1);   // 1 августа 2026
   var END = new Date(2026, 7, 22);    // 22 августа 2026 включительно
+  var NUM_WEEKS = 3;
   var DAY = 86400000;
 
   var TOTAL = DEFAULT_TOTAL;
@@ -487,9 +488,9 @@
 
     // Неделя: блоки по 7 дней от 27 июля; недельный бюджет — доля общего пропорционально дням
     var periodDays = Math.round((END - START) / DAY) + 1;
-    var idx = Math.min(Math.max(Math.floor((t - START) / DAY / 7), 0), 3);
+    var idx = Math.min(Math.max(Math.floor((t - START) / DAY / 7), 0), NUM_WEEKS - 1);
     var wStart = new Date(START.getTime() + idx * 7 * DAY);
-    var wEnd = new Date(Math.min(wStart.getTime() + 6 * DAY, END.getTime()));
+    var wEnd = (idx === NUM_WEEKS - 1) ? new Date(END.getTime()) : new Date(wStart.getTime() + 6 * DAY);
     var daysInWeek = Math.round((wEnd - wStart) / DAY) + 1;
     var weekBudget = TOTAL / periodDays * daysInWeek;
     var weekSpent = items.reduce(function (s, it) {
@@ -499,7 +500,7 @@
     }, 0);
     var weekLeft = weekBudget - weekSpent;
 
-    document.getElementById('weekTitle').textContent = ended ? 'Период завершён' : 'Неделя ' + (idx + 1) + ' из 4';
+    document.getElementById('weekTitle').textContent = ended ? 'Период завершён' : 'Неделя ' + (idx + 1) + ' из ' + NUM_WEEKS;
     var elWeekLeft = document.getElementById('weekLeft');
     elWeekLeft.textContent = zl(weekLeft);
     elWeekLeft.classList.toggle('over', weekLeft < 0);
