@@ -486,29 +486,36 @@
     document.getElementById('perDay').textContent =
       days > 0 ? zl(Math.max(left, 0) / days) : '—';
 
-    // Неделя: блоки по 7 дней от 27 июля; недельный бюджет — доля общего пропорционально дням
+    // Неделя: блоки по 7 дней от начала периода; перерасход/недорасход прошлых недель
+    // переносится на текущую (доступный лимит = своя доля минус долг/плюс остаток с прошлых недель)
     var periodDays = Math.round((END - START) / DAY) + 1;
     var idx = Math.min(Math.max(Math.floor((t - START) / DAY / 7), 0), NUM_WEEKS - 1);
     var wStart = new Date(START.getTime() + idx * 7 * DAY);
     var wEnd = (idx === NUM_WEEKS - 1) ? new Date(END.getTime()) : new Date(wStart.getTime() + 6 * DAY);
-    var daysInWeek = Math.round((wEnd - wStart) / DAY) + 1;
-    var weekBudget = TOTAL / periodDays * daysInWeek;
+    var daysElapsedThroughWeekEnd = Math.round((wEnd - START) / DAY) + 1;
+    var cumulativeBudget = TOTAL / periodDays * daysElapsedThroughWeekEnd;
+    var spentBeforeThisWeek = items.reduce(function (s, it) {
+      var d = new Date(it.ts);
+      var d0 = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      return (d0 < wStart) ? s + it.amount : s;
+    }, 0);
     var weekSpent = items.reduce(function (s, it) {
       var d = new Date(it.ts);
       var d0 = new Date(d.getFullYear(), d.getMonth(), d.getDate());
       return (d0 >= wStart && d0 <= wEnd) ? s + it.amount : s;
     }, 0);
-    var weekLeft = weekBudget - weekSpent;
+    var weekAvailable = cumulativeBudget - spentBeforeThisWeek;
+    var weekLeft = weekAvailable - weekSpent;
 
     document.getElementById('weekTitle').textContent = ended ? 'Период завершён' : 'Неделя ' + (idx + 1) + ' из ' + NUM_WEEKS;
     var elWeekLeft = document.getElementById('weekLeft');
     elWeekLeft.textContent = zl(weekLeft);
     elWeekLeft.classList.toggle('over', weekLeft < 0);
-    document.getElementById('weekOf').textContent = 'из ' + zl(weekBudget);
+    document.getElementById('weekOf').textContent = 'из ' + zl(weekAvailable);
     document.getElementById('weekRange').textContent =
       fmtDay.format(wStart) + ' — ' + fmtDay.format(wEnd) + ' · потрачено ' + zl(weekSpent);
 
-    var pct = Math.min(weekSpent / weekBudget, 1);
+    var pct = weekAvailable > 0 ? Math.min(weekSpent / weekAvailable, 1) : 1;
     var bar = document.getElementById('weekBar');
     bar.style.width = (pct * 100) + '%';
     bar.className = pct < 0.6 ? 'ok' : (pct < 0.9 ? 'warn' : 'bad');
