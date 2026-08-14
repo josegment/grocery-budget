@@ -296,7 +296,7 @@
     </div>
     <div class="sub" id="totalSub"></div>
     <div class="budget-edit" id="budgetEdit" hidden>
-      <input class="txt" id="budgetInput" type="text" inputmode="decimal" placeholder="Общий бюджет, zł" aria-label="Общий бюджет, zł">
+      <input class="txt" id="budgetInput" type="text" inputmode="decimal" placeholder="+60 добавить или новая сумма" aria-label="Общий бюджет, zł">
     </div>
     <div class="stats">
       <div class="stat"><div class="v" id="daysLeft">—</div><div class="l">дней осталось</div></div>
@@ -776,32 +776,46 @@
     if (e.target === this) closeModal();
   });
 
-  // --- Редактирование общего бюджета (инлайн, живое сохранение) ---
+  // --- Редактирование общего бюджета ---
+  // Поле открывается пустым; ввод +60 добавляет к текущей сумме, -60 вычитает,
+  // а обычное число (без знака) заменяет бюджет целиком. Сохраняется одним
+  // действием при закрытии поля (Enter/уход фокуса) — не на каждой нажатой клавише,
+  // чтобы промежуточные недописанные значения никогда не попадали на сервер.
   function openBudgetEdit() {
     var inp = document.getElementById('budgetInput');
-    inp.value = String(TOTAL).replace('.', ',');
+    inp.value = '';
+    inp.placeholder = 'сейчас ' + zl(TOTAL) + ' · +60 добавить';
     document.getElementById('budgetEdit').hidden = false;
     document.getElementById('budgetBtn').hidden = true;
     inp.focus();
-    inp.select();
   }
-  function closeBudgetEdit() {
+  function commitBudget() {
+    var inp = document.getElementById('budgetInput');
+    var raw = inp.value.trim();
+    if (raw) {
+      var isDelta = raw[0] === '+' || raw[0] === '-';
+      var v = parseFloat(raw.replace(',', '.'));
+      if (isFinite(v)) {
+        var newTotal = isDelta ? TOTAL + v : v;
+        if (newTotal > 0) {
+          TOTAL = Math.round(newTotal * 100) / 100;
+          setDoc(budgetDocRef, { total: TOTAL });
+        }
+      }
+    }
     document.getElementById('budgetEdit').hidden = true;
     document.getElementById('budgetBtn').hidden = false;
+    render();
   }
   document.getElementById('budgetBtn').addEventListener('click', openBudgetEdit);
-  // сохраняем прямо во время ввода — всё пересчитывается на лету
-  document.getElementById('budgetInput').addEventListener('input', function () {
-    var v = parseFloat(this.value.replace(',', '.'));
-    if (isFinite(v) && v > 0) {
-      TOTAL = Math.round(v * 100) / 100;
-      render();
-      setDoc(budgetDocRef, { total: TOTAL });
-    }
-  });
-  document.getElementById('budgetInput').addEventListener('blur', closeBudgetEdit);
+  document.getElementById('budgetInput').addEventListener('blur', commitBudget);
   document.getElementById('budgetInput').addEventListener('keydown', function (e) {
-    if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); closeBudgetEdit(); }
+    if (e.key === 'Enter') { e.preventDefault(); commitBudget(); }
+    else if (e.key === 'Escape') {
+      e.preventDefault();
+      document.getElementById('budgetInput').value = '';
+      document.getElementById('budgetInput').blur();
+    }
   });
 
   onSnapshot(expensesCol, function (snapshot) {
