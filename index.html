@@ -340,6 +340,7 @@
   </section>
 
   <form class="add" id="addForm" autocomplete="off">
+    <input class="txt" id="entryDate" type="date" aria-label="Дата траты">
     <input class="txt" id="amount" type="text" inputmode="decimal" placeholder="Сумма, zł" aria-label="Сумма в злотых">
     <input class="txt" id="note" type="text" placeholder="Заметка (необязательно)" aria-label="Заметка" maxlength="80">
     <div class="photo-attach">
@@ -400,6 +401,18 @@
   function dateOnly(ts) {
     var d = new Date(ts);
     return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+  // "YYYY-MM-DD" для value инпута <input type="date">
+  function dateInputValue(ts) {
+    var d = new Date(ts);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function todayInputValue() { return dateInputValue(Date.now()); }
+  // Берёт год/месяц/день из dateStr ("YYYY-MM-DD"), а время суток — из baseTs
+  function combineDateKeepTime(dateStr, baseTs) {
+    var parts = dateStr.split('-').map(Number);
+    var base = new Date(baseTs);
+    return new Date(parts[0], parts[1] - 1, parts[2], base.getHours(), base.getMinutes(), base.getSeconds(), base.getMilliseconds()).getTime();
   }
   function periodKeyFor(d) {
     var y = d.getFullYear(), m = d.getMonth(), day = d.getDate();
@@ -677,6 +690,12 @@
 
       var fields = document.createElement('div');
       fields.className = 'edit-fields';
+      var dateInput = document.createElement('input');
+      dateInput.className = 'e-date';
+      dateInput.type = 'date';
+      dateInput.max = todayInputValue();
+      dateInput.value = dateInputValue(it.ts);
+      dateInput.setAttribute('aria-label', 'Дата траты');
       var amtInput = document.createElement('input');
       amtInput.className = 'e-amt';
       amtInput.type = 'text';
@@ -690,6 +709,7 @@
       noteInput.placeholder = 'Заметка (необязательно)';
       noteInput.value = it.note || '';
       noteInput.setAttribute('aria-label', 'Заметка');
+      fields.appendChild(dateInput);
       fields.appendChild(amtInput);
       fields.appendChild(noteInput);
 
@@ -777,7 +797,8 @@
         if (!isFinite(v) || v <= 0) { amtInput.focus(); return; }
         var patch = {
           amount: Math.round(v * 100) / 100,
-          note: noteInput.value.trim()
+          note: noteInput.value.trim(),
+          ts: dateInput.value ? combineDateKeepTime(dateInput.value, it.ts) : it.ts
         };
 
         var photoOp = Promise.resolve();
@@ -796,6 +817,7 @@
         });
       }
       saveBtn.addEventListener('click', commitEdit);
+      dateInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') commitEdit(); });
       amtInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') commitEdit(); });
       noteInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') commitEdit(); });
       cancelBtn.addEventListener('click', function () { editingId = null; render(); });
@@ -884,6 +906,10 @@
   }
   document.getElementById('addPhotoRemove').addEventListener('click', clearAddPhoto);
 
+  var dateEl = document.getElementById('entryDate');
+  dateEl.max = todayInputValue();
+  dateEl.value = todayInputValue();
+
   document.getElementById('addForm').addEventListener('submit', function (ev) {
     ev.preventDefault();
     var amountEl = document.getElementById('amount');
@@ -891,10 +917,11 @@
     var amount = parseFloat(amountEl.value.replace(',', '.'));
     if (!isFinite(amount) || amount <= 0) { amountEl.focus(); return; }
     var id = Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+    var ts = dateEl.value ? combineDateKeepTime(dateEl.value, Date.now()) : Date.now();
     var entry = {
       amount: Math.round(amount * 100) / 100,
       note: noteEl.value.trim(),
-      ts: Date.now(),
+      ts: ts,
       hasPhoto: !!addPendingBlob
     };
     var photoOp = addPendingBlob ? putPhoto(id, addPendingBlob) : Promise.resolve();
@@ -903,6 +930,7 @@
     }).then(function () {
       amountEl.value = '';
       noteEl.value = '';
+      dateEl.value = todayInputValue();
       clearAddPhoto();
       amountEl.focus();
     });
