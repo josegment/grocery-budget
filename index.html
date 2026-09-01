@@ -74,20 +74,6 @@
   }
   .edit-icon:active { background: var(--line); color: var(--ink); }
   .budget-edit { margin-top: 12px; }
-  .budget-mode { display: flex; gap: 6px; margin-bottom: 8px; }
-  .bmode {
-    flex: 1;
-    font: inherit;
-    font-size: 13.5px;
-    font-weight: 650;
-    padding: 9px 4px;
-    border: 1px solid var(--line);
-    border-radius: 9px;
-    background: var(--bg);
-    color: var(--muted);
-    cursor: pointer;
-  }
-  .bmode.active { background: var(--ink); color: #fff; border-color: var(--ink); }
   .budget-edit .txt {
     display: block;
     box-sizing: border-box;
@@ -367,12 +353,7 @@
     </div>
     <div class="sub" id="totalSub"></div>
     <div class="budget-edit" id="budgetEdit" hidden>
-      <div class="budget-mode">
-        <button type="button" class="bmode active" id="modeSet" data-mode="set">Заменить</button>
-        <button type="button" class="bmode" id="modeAdd" data-mode="add">Добавить</button>
-        <button type="button" class="bmode" id="modeSub" data-mode="sub">Отнять</button>
-      </div>
-      <input class="txt" id="budgetInput" type="text" inputmode="decimal" placeholder="Сумма, zł" aria-label="Сумма, zł">
+      <input class="txt" id="budgetInput" type="text" inputmode="decimal" placeholder="Сколько должно остаться, zł" aria-label="Сколько должно остаться, zł">
     </div>
     <div class="stats">
       <div class="stat"><div class="v" id="daysLeft">—</div><div class="l">дней осталось</div></div>
@@ -481,6 +462,16 @@
     var keys = Object.keys(budgetsCache).filter(function (k) { return k < key; }).sort();
     if (keys.length) return budgetsCache[keys[keys.length - 1]];
     return DEFAULT_TOTAL;
+  }
+  function currentPeriodItems() {
+    var pb = periodBounds(currentPeriodKey());
+    return load().filter(function (it) {
+      var d0 = dateOnly(it.ts);
+      return d0 >= pb.start && d0 <= pb.end;
+    });
+  }
+  function currentSpent() {
+    return currentPeriodItems().reduce(function (s, it) { return s + it.amount; }, 0);
   }
 
   // --- Фото: хранилище в IndexedDB (локально на устройстве) ---
@@ -607,10 +598,7 @@
     TOTAL = totalFor(currentKey);
 
     var periodDays = Math.round((END - START) / DAY) + 1;
-    var curItems = allItems.filter(function (it) {
-      var d0 = dateOnly(it.ts);
-      return d0 >= START && d0 <= END;
-    });
+    var curItems = currentPeriodItems();
     var spent = curItems.reduce(function (s, it) { return s + it.amount; }, 0);
     var left = TOTAL - spent;
     var days = Math.round((END - t) / DAY) + 1;
@@ -1007,22 +995,13 @@
   });
 
   // --- Редактирование бюджета текущего месячного периода ---
-  // Три кнопки задают режим (заменить целиком / прибавить / отнять), а сумма
-  // всегда вводится на удобной цифровой клавиатуре — никаких знаков +/- печатать
-  // не нужно. Сохраняется одним действием при закрытии поля (Enter/уход фокуса).
-  var budgetMode = 'set';
-  function setBudgetMode(mode) {
-    budgetMode = mode;
-    ['modeSet', 'modeAdd', 'modeSub'].forEach(function (id) {
-      var btn = document.getElementById(id);
-      btn.classList.toggle('active', btn.dataset.mode === mode);
-    });
-  }
+  // Поле редактирует не абстрактный "общий бюджет", а сам ОСТАТОК: вводишь,
+  // сколько должно остаться до конца периода, и приложение само пересчитывает
+  // общий бюджет как (уже потрачено в этом периоде + введённый остаток).
   function openBudgetEdit() {
     var inp = document.getElementById('budgetInput');
     inp.value = '';
-    inp.placeholder = 'сейчас ' + zl(TOTAL);
-    setBudgetMode('set');
+    inp.placeholder = 'сейчас ' + zl(TOTAL - currentSpent());
     document.getElementById('budgetEdit').hidden = false;
     document.getElementById('budgetBtn').hidden = true;
     inp.focus();
@@ -1033,7 +1012,7 @@
     if (raw) {
       var v = parseFloat(raw.replace(',', '.'));
       if (isFinite(v) && v >= 0) {
-        var newTotal = budgetMode === 'add' ? TOTAL + v : (budgetMode === 'sub' ? TOTAL - v : v);
+        var newTotal = currentSpent() + v;
         if (newTotal > 0) {
           TOTAL = Math.round(newTotal * 100) / 100;
           budgetsCache[currentPeriodKey()] = TOTAL;
@@ -1046,29 +1025,7 @@
     render();
   }
   document.getElementById('budgetBtn').addEventListener('click', openBudgetEdit);
-  ['modeSet', 'modeAdd', 'modeSub'].forEach(function (id) {
-    var btn = document.getElementById(id);
-    // touchstart preventDefault не даёт iOS увести фокус с поля раньше времени
-    btn.addEventListener('touchstart', function (e) { e.preventDefault(); }, { passive: false });
-    btn.addEventListener('click', function () {
-      setBudgetMode(btn.dataset.mode);
-      document.getElementById('budgetInput').focus();
-    });
-  });
-  // На iOS blur у поля срабатывает раньше клика по кнопке режима (preventDefault на
-  // mousedown это не предотвращает), поэтому проверяем через небольшую задержку,
-  // куда реально ушёл фокус — если на одну из кнопок режима, ничего не закрываем
-  document.getElementById('budgetInput').addEventListener('blur', function () {
-    setTimeout(function () {
-      var active = document.activeElement;
-      var stillInside = active && (
-        active.id === 'budgetInput' || active.id === 'modeSet' ||
-        active.id === 'modeAdd' || active.id === 'modeSub'
-      );
-      if (stillInside) return; // фокус вернулся в поле или остался на кнопке режима — не закрываем
-      commitBudget();
-    }, 0);
-  });
+  document.getElementById('budgetInput').addEventListener('blur', commitBudget);
   document.getElementById('budgetInput').addEventListener('keydown', function (e) {
     if (e.key === 'Enter') { e.preventDefault(); commitBudget(); }
     else if (e.key === 'Escape') {
