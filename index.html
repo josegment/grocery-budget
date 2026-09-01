@@ -1048,6 +1048,8 @@
   document.getElementById('budgetBtn').addEventListener('click', openBudgetEdit);
   ['modeSet', 'modeAdd', 'modeSub'].forEach(function (id) {
     var btn = document.getElementById(id);
+    // touchstart preventDefault не даёт iOS увести фокус с поля раньше времени
+    btn.addEventListener('touchstart', function (e) { e.preventDefault(); }, { passive: false });
     btn.addEventListener('click', function () {
       setBudgetMode(btn.dataset.mode);
       document.getElementById('budgetInput').focus();
@@ -1059,7 +1061,11 @@
   document.getElementById('budgetInput').addEventListener('blur', function () {
     setTimeout(function () {
       var active = document.activeElement;
-      if (active && (active.id === 'modeSet' || active.id === 'modeAdd' || active.id === 'modeSub')) return;
+      var stillInside = active && (
+        active.id === 'budgetInput' || active.id === 'modeSet' ||
+        active.id === 'modeAdd' || active.id === 'modeSub'
+      );
+      if (stillInside) return; // фокус вернулся в поле или остался на кнопке режима — не закрываем
       commitBudget();
     }, 0);
   });
