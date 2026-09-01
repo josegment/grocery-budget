@@ -200,7 +200,7 @@
   .history { display: flex; flex-direction: column; gap: 0; }
   .history .eyebrow { margin: 6px 4px 8px; }
 
-  .period-group { margin-bottom: 8px; }
+  .period-group { margin-bottom: 10px; }
   .period-header {
     width: 100%;
     display: flex;
@@ -209,18 +209,26 @@
     gap: 10px;
     background: var(--card);
     border: 1px solid var(--line);
-    border-radius: 12px;
-    padding: 12px 14px;
+    border-radius: 14px;
+    padding: 14px 16px;
     cursor: pointer;
     font: inherit;
     text-align: left;
     color: var(--ink);
   }
   .period-header:active { background: var(--bg); }
-  .period-head-left { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .period-title { font-size: 14px; font-weight: 650; }
-  .period-sub { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
-  .period-chevron { font-size: 13px; color: var(--muted); flex-shrink: 0; }
+  .period-group.is-current .period-header { border-color: var(--green); border-width: 1.5px; }
+  .period-head-left { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .period-eyebrow {
+    font-size: 11.5px;
+    font-weight: 650;
+    text-transform: lowercase;
+    color: var(--green);
+    letter-spacing: 0.02em;
+  }
+  .period-title { font-size: 21px; font-weight: 700; letter-spacing: -0.01em; }
+  .period-sub { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 1px; }
+  .period-chevron { font-size: 15px; color: var(--muted); flex-shrink: 0; }
   .period-body { padding-top: 8px; }
   .period-body[hidden] { display: none; }
 
@@ -527,6 +535,15 @@
     return fmtDay.format(b.start) + ' — ' + fmtDay.format(b.end);
   }
 
+  var fmtMonth = new Intl.DateTimeFormat('ru', { month: 'long' });
+  function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+  function periodMonthLabel(key) {
+    var b = periodBounds(key);
+    var m1 = capitalize(fmtMonth.format(b.start));
+    var m2 = capitalize(fmtMonth.format(b.end));
+    return m1 === m2 ? m1 : (m1 + ' — ' + m2);
+  }
+
   var editingId = null;
   var collapsedPeriods = {}; // periodKey -> true, если пользователь свернул вручную
   function isExpanded(key, isCurrent) {
@@ -651,7 +668,7 @@
       var expanded = isExpanded(key, isCurrent);
 
       var group = document.createElement('div');
-      group.className = 'period-group';
+      group.className = 'period-group' + (isCurrent ? ' is-current' : '');
 
       var header = document.createElement('button');
       header.type = 'button';
@@ -660,13 +677,19 @@
 
       var headLeft = document.createElement('div');
       headLeft.className = 'period-head-left';
+      if (isCurrent) {
+        var headEyebrow = document.createElement('div');
+        headEyebrow.className = 'period-eyebrow';
+        headEyebrow.textContent = 'Текущий период';
+        headLeft.appendChild(headEyebrow);
+      }
       var headTitle = document.createElement('div');
       headTitle.className = 'period-title';
-      headTitle.textContent = (isCurrent ? 'Текущий период · ' : '') + periodLabel(key);
+      headTitle.textContent = periodMonthLabel(key);
       var headSub = document.createElement('div');
       headSub.className = 'period-sub';
       var count = itemsForPeriod.length;
-      headSub.textContent = count + (count === 1 ? ' трата' : (count >= 2 && count <= 4 ? ' траты' : ' трат')) + ' · ' + zl(groupSpent);
+      headSub.textContent = periodLabel(key) + ' · ' + count + (count === 1 ? ' трата' : (count >= 2 && count <= 4 ? ' траты' : ' трат')) + ' · ' + zl(groupSpent);
       headLeft.appendChild(headTitle);
       headLeft.appendChild(headSub);
 
