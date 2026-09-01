@@ -187,6 +187,31 @@
 
   .history { display: flex; flex-direction: column; gap: 0; }
   .history .eyebrow { margin: 6px 4px 8px; }
+
+  .period-group { margin-bottom: 8px; }
+  .period-header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px 14px;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+    color: var(--ink);
+  }
+  .period-header:active { background: var(--bg); }
+  .period-head-left { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .period-title { font-size: 14px; font-weight: 650; }
+  .period-sub { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .period-chevron { font-size: 13px; color: var(--muted); flex-shrink: 0; }
+  .period-body { padding-top: 8px; }
+  .period-body[hidden] { display: none; }
+
   .entry {
     background: var(--card);
     border: 1px solid var(--line);
@@ -289,7 +314,7 @@
 
 <div class="wrap">
   <section class="hero">
-    <div class="eyebrow">Осталось до 22 августа</div>
+    <div class="eyebrow" id="periodEyebrow">Осталось</div>
     <div class="big-row">
       <div class="big" id="totalLeft">—</div>
       <button type="button" class="edit-icon" id="budgetBtn" aria-label="Изменить бюджет">✎</button>
@@ -356,17 +381,43 @@
   var fbApp = initializeApp(firebaseConfig);
   var db = getFirestore(fbApp, 'grocery-budget');
   var expensesCol = collection(db, 'expenses');
-  var budgetDocRef = doc(db, 'meta', 'budget');
+  var budgetsCol = collection(db, 'budgets');
 
   var DEFAULT_TOTAL = 664;
-  var START = new Date(2026, 7, 1);   // 1 августа 2026
-  var END = new Date(2026, 7, 22);    // 22 августа 2026 включительно
-  var NUM_WEEKS = 3;
+  var NUM_WEEKS = 4;
   var DAY = 86400000;
 
   var TOTAL = DEFAULT_TOTAL;
   var itemsCache = [];
+  var budgetsCache = {}; // periodKey -> total
   function load() { return itemsCache; }
+
+  // --- Периоды: "зарплатный" месяц с 22-го числа по 21-е следующего ---
+  function today0() {
+    var n = new Date();
+    return new Date(n.getFullYear(), n.getMonth(), n.getDate());
+  }
+  function dateOnly(ts) {
+    var d = new Date(ts);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+  function periodKeyFor(d) {
+    var y = d.getFullYear(), m = d.getMonth(), day = d.getDate();
+    if (day < 22) { m -= 1; if (m < 0) { m = 11; y -= 1; } }
+    return y + '-' + String(m + 1).padStart(2, '0');
+  }
+  function periodBounds(key) {
+    var parts = key.split('-');
+    var y = parseInt(parts[0], 10), m = parseInt(parts[1], 10) - 1;
+    return { start: new Date(y, m, 22), end: new Date(y, m + 1, 21) };
+  }
+  function currentPeriodKey() { return periodKeyFor(today0()); }
+  function totalFor(key) {
+    if (budgetsCache.hasOwnProperty(key)) return budgetsCache[key];
+    var keys = Object.keys(budgetsCache).filter(function (k) { return k < key; }).sort();
+    if (keys.length) return budgetsCache[keys[keys.length - 1]];
+    return DEFAULT_TOTAL;
+  }
 
   // --- Фото: хранилище в IndexedDB (локально на устройстве) ---
   var DB_NAME = 'grocery-budget-db';
@@ -435,15 +486,21 @@
     var s = (Math.round(n * 100) / 100).toFixed(2).replace('.', ',').replace(/,00$/, '');
     return s + ' zł';
   }
-  function today0() {
-    var n = new Date();
-    return new Date(n.getFullYear(), n.getMonth(), n.getDate());
-  }
 
   var fmtDay = new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'short' });
   var fmtFull = new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
+  function periodLabel(key) {
+    var b = periodBounds(key);
+    return fmtDay.format(b.start) + ' — ' + fmtDay.format(b.end);
+  }
+
   var editingId = null;
+  var collapsedPeriods = {}; // periodKey -> true, если пользователь свернул вручную
+  function isExpanded(key, isCurrent) {
+    if (collapsedPeriods.hasOwnProperty(key)) return !collapsedPeriods[key];
+    return isCurrent;
+  }
   var objectUrls = [];
   function freeUrls() {
     objectUrls.forEach(function (u) { URL.revokeObjectURL(u); });
@@ -469,14 +526,23 @@
 
   function render() {
     freeUrls();
-    var items = load();
-    var spent = items.reduce(function (s, it) { return s + it.amount; }, 0);
-    var left = TOTAL - spent;
-
+    var allItems = load();
     var t = today0();
-    var ended = t > END;
-    var days = ended ? 0 : Math.round((END - Math.max(t, START)) / DAY) + 1;
+    var currentKey = currentPeriodKey();
+    var pb = periodBounds(currentKey);
+    var START = pb.start, END = pb.end;
+    TOTAL = totalFor(currentKey);
 
+    var periodDays = Math.round((END - START) / DAY) + 1;
+    var curItems = allItems.filter(function (it) {
+      var d0 = dateOnly(it.ts);
+      return d0 >= START && d0 <= END;
+    });
+    var spent = curItems.reduce(function (s, it) { return s + it.amount; }, 0);
+    var left = TOTAL - spent;
+    var days = Math.round((END - t) / DAY) + 1;
+
+    document.getElementById('periodEyebrow').textContent = 'Осталось до ' + fmtDay.format(END);
     var elTotal = document.getElementById('totalLeft');
     elTotal.textContent = zl(left);
     elTotal.classList.toggle('over', left < 0);
@@ -486,28 +552,25 @@
     document.getElementById('perDay').textContent =
       days > 0 ? zl(Math.max(left, 0) / days) : '—';
 
-    // Неделя: блоки по 7 дней от начала периода; перерасход/недорасход прошлых недель
-    // переносится на текущую (доступный лимит = своя доля минус долг/плюс остаток с прошлых недель)
-    var periodDays = Math.round((END - START) / DAY) + 1;
+    // Неделя: блоки по 7 дней от начала текущего периода; перерасход/недорасход
+    // прошлых недель переносится на текущую
     var idx = Math.min(Math.max(Math.floor((t - START) / DAY / 7), 0), NUM_WEEKS - 1);
     var wStart = new Date(START.getTime() + idx * 7 * DAY);
     var wEnd = (idx === NUM_WEEKS - 1) ? new Date(END.getTime()) : new Date(wStart.getTime() + 6 * DAY);
     var daysElapsedThroughWeekEnd = Math.round((wEnd - START) / DAY) + 1;
     var cumulativeBudget = TOTAL / periodDays * daysElapsedThroughWeekEnd;
-    var spentBeforeThisWeek = items.reduce(function (s, it) {
-      var d = new Date(it.ts);
-      var d0 = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    var spentBeforeThisWeek = curItems.reduce(function (s, it) {
+      var d0 = dateOnly(it.ts);
       return (d0 < wStart) ? s + it.amount : s;
     }, 0);
-    var weekSpent = items.reduce(function (s, it) {
-      var d = new Date(it.ts);
-      var d0 = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    var weekSpent = curItems.reduce(function (s, it) {
+      var d0 = dateOnly(it.ts);
       return (d0 >= wStart && d0 <= wEnd) ? s + it.amount : s;
     }, 0);
     var weekAvailable = cumulativeBudget - spentBeforeThisWeek;
     var weekLeft = weekAvailable - weekSpent;
 
-    document.getElementById('weekTitle').textContent = ended ? 'Период завершён' : 'Неделя ' + (idx + 1) + ' из ' + NUM_WEEKS;
+    document.getElementById('weekTitle').textContent = 'Неделя ' + (idx + 1) + ' из ' + NUM_WEEKS;
     var elWeekLeft = document.getElementById('weekLeft');
     elWeekLeft.textContent = zl(weekLeft);
     elWeekLeft.classList.toggle('over', weekLeft < 0);
@@ -520,206 +583,280 @@
     bar.style.width = (pct * 100) + '%';
     bar.className = pct < 0.6 ? 'ok' : (pct < 0.9 ? 'warn' : 'bad');
 
-    // История
+    renderHistory(allItems, currentKey);
+  }
+
+  // --- История: аккордеон по месячным периодам ---
+  function groupByPeriod(items) {
+    var map = {};
+    items.forEach(function (it) {
+      var key = periodKeyFor(dateOnly(it.ts));
+      if (!map[key]) map[key] = [];
+      map[key].push(it);
+    });
+    return map;
+  }
+
+  function renderHistory(allItems, currentKey) {
     var list = document.getElementById('list');
     list.innerHTML = '';
-    if (!items.length) {
+    if (!allItems.length) {
       var e = document.createElement('div');
       e.className = 'empty';
       e.textContent = 'Пока нет трат — добавьте первую выше';
       list.appendChild(e);
       return;
     }
-    items.slice().sort(function (a, b) { return b.ts - a.ts; }).forEach(function (it) {
-      var row = document.createElement('div');
-      row.className = 'entry';
 
-      if (editingId === it.id) {
-        row.className = 'entry editing';
+    var groups = groupByPeriod(allItems);
+    if (!groups[currentKey]) groups[currentKey] = [];
+    var keys = Object.keys(groups).sort().reverse(); // "YYYY-MM" сортируется хронологически
 
-        var fields = document.createElement('div');
-        fields.className = 'edit-fields';
-        var amtInput = document.createElement('input');
-        amtInput.className = 'e-amt';
-        amtInput.type = 'text';
-        amtInput.setAttribute('inputmode', 'decimal');
-        amtInput.value = String(it.amount).replace('.', ',');
-        amtInput.setAttribute('aria-label', 'Сумма');
-        var noteInput = document.createElement('input');
-        noteInput.className = 'e-note';
-        noteInput.type = 'text';
-        noteInput.maxLength = 80;
-        noteInput.placeholder = 'Заметка (необязательно)';
-        noteInput.value = it.note || '';
-        noteInput.setAttribute('aria-label', 'Заметка');
-        fields.appendChild(amtInput);
-        fields.appendChild(noteInput);
+    keys.forEach(function (key) {
+      var itemsForPeriod = groups[key].slice().sort(function (a, b) { return b.ts - a.ts; });
+      var isCurrent = key === currentKey;
+      var groupSpent = itemsForPeriod.reduce(function (s, it) { return s + it.amount; }, 0);
+      var expanded = isExpanded(key, isCurrent);
 
-        // Фото в режиме редактирования
-        var photoRow = document.createElement('div');
-        photoRow.className = 'edit-photo';
-        var pendingBlob = null;      // новый выбранный файл
-        var removePhoto = false;     // пометка на удаление
-        var fileInput = document.createElement('input');
-        fileInput.type = 'file';
-        fileInput.accept = 'image/*';
-        fileInput.hidden = true;
+      var group = document.createElement('div');
+      group.className = 'period-group';
 
-        var previewWrap = document.createElement('div');
-        previewWrap.className = 'photo-preview';
-        previewWrap.hidden = true;
-        var previewImg = document.createElement('img');
-        previewImg.alt = 'Фото';
-        var previewRm = document.createElement('button');
-        previewRm.type = 'button';
-        previewRm.className = 'rm';
-        previewRm.textContent = '✕';
-        previewRm.setAttribute('aria-label', 'Убрать фото');
-        previewWrap.appendChild(previewImg);
-        previewWrap.appendChild(previewRm);
+      var header = document.createElement('button');
+      header.type = 'button';
+      header.className = 'period-header';
+      header.setAttribute('aria-expanded', expanded ? 'true' : 'false');
 
-        var photoBtn = document.createElement('button');
-        photoBtn.type = 'button';
-        photoBtn.className = 'photo-btn';
+      var headLeft = document.createElement('div');
+      headLeft.className = 'period-head-left';
+      var headTitle = document.createElement('div');
+      headTitle.className = 'period-title';
+      headTitle.textContent = (isCurrent ? 'Текущий период · ' : '') + periodLabel(key);
+      var headSub = document.createElement('div');
+      headSub.className = 'period-sub';
+      var count = itemsForPeriod.length;
+      headSub.textContent = count + (count === 1 ? ' трата' : (count >= 2 && count <= 4 ? ' траты' : ' трат')) + ' · ' + zl(groupSpent);
+      headLeft.appendChild(headTitle);
+      headLeft.appendChild(headSub);
 
-        function refreshPhotoBtn() {
-          photoBtn.textContent = (previewWrap.hidden ? '📷 Добавить фото' : '📷 Заменить фото');
-        }
-        function showPreviewFromBlob(blob) {
-          var u = URL.createObjectURL(blob);
-          objectUrls.push(u);
-          previewImg.src = u;
-          previewWrap.hidden = false;
-          refreshPhotoBtn();
-        }
-        // показать существующее фото, если есть
-        if (it.hasPhoto) {
-          getPhoto(it.id).then(function (blob) {
-            if (blob && !removePhoto && !pendingBlob) showPreviewFromBlob(blob);
-          });
-        }
-        photoBtn.addEventListener('click', function () { fileInput.click(); });
-        fileInput.addEventListener('change', function () {
-          var f = fileInput.files && fileInput.files[0];
-          if (!f) return;
-          compress(f).then(function (blob) {
-            pendingBlob = blob;
-            removePhoto = false;
-            showPreviewFromBlob(blob);
-          }).catch(function () { alert('Не удалось обработать фото'); });
-        });
-        previewRm.addEventListener('click', function () {
-          pendingBlob = null;
-          removePhoto = true;
-          previewImg.removeAttribute('src');
-          previewWrap.hidden = true;
-          fileInput.value = '';
-          refreshPhotoBtn();
-        });
-        refreshPhotoBtn();
-        photoRow.appendChild(photoBtn);
-        photoRow.appendChild(previewWrap);
-        photoRow.appendChild(fileInput);
+      var chevron = document.createElement('div');
+      chevron.className = 'period-chevron';
+      chevron.textContent = expanded ? '▾' : '▸';
 
-        var actions = document.createElement('div');
-        actions.className = 'edit-actions';
-        var saveBtn = document.createElement('button');
-        saveBtn.className = 'esave';
-        saveBtn.type = 'button';
-        saveBtn.textContent = 'Сохранить';
-        var cancelBtn = document.createElement('button');
-        cancelBtn.className = 'ecancel';
-        cancelBtn.type = 'button';
-        cancelBtn.textContent = 'Отмена';
-        actions.appendChild(saveBtn);
-        actions.appendChild(cancelBtn);
-
-        function commitEdit() {
-          var v = parseFloat(amtInput.value.replace(',', '.'));
-          if (!isFinite(v) || v <= 0) { amtInput.focus(); return; }
-          var patch = {
-            amount: Math.round(v * 100) / 100,
-            note: noteInput.value.trim()
-          };
-
-          var photoOp = Promise.resolve();
-          if (pendingBlob) {
-            photoOp = putPhoto(it.id, pendingBlob);
-            patch.hasPhoto = true;
-          } else if (removePhoto) {
-            photoOp = delPhoto(it.id);
-            patch.hasPhoto = false;
-          }
-          photoOp.then(function () {
-            return updateDoc(doc(db, 'expenses', it.id), patch);
-          }).then(function () {
-            editingId = null;
-            render();
-          });
-        }
-        saveBtn.addEventListener('click', commitEdit);
-        amtInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') commitEdit(); });
-        noteInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') commitEdit(); });
-        cancelBtn.addEventListener('click', function () { editingId = null; render(); });
-
-        row.appendChild(fields);
-        row.appendChild(photoRow);
-        row.appendChild(actions);
-        list.appendChild(row);
-        return;
-      }
-
-      if (it.hasPhoto) {
-        var thumb = document.createElement('img');
-        thumb.className = 'thumb';
-        thumb.alt = 'Фото траты';
-        (function (id) {
-          getPhoto(id).then(function (blob) {
-            if (blob) { var u = URL.createObjectURL(blob); objectUrls.push(u); thumb.src = u; }
-          });
-        })(it.id);
-        thumb.addEventListener('click', function () { openModal(it.id); });
-        row.appendChild(thumb);
-      }
-
-      var info = document.createElement('div');
-      info.className = 'info';
-      var amt = document.createElement('div');
-      amt.className = 'amt';
-      amt.textContent = zl(it.amount);
-      var meta = document.createElement('div');
-      meta.className = 'meta';
-      meta.textContent = fmtFull.format(new Date(it.ts)) + (it.note ? ' · ' + it.note : '');
-      info.appendChild(amt);
-      info.appendChild(meta);
-
-      var acts = document.createElement('div');
-      acts.className = 'actions';
-      var edit = document.createElement('button');
-      edit.className = 'iconbtn edit';
-      edit.type = 'button';
-      edit.textContent = '✎';
-      edit.setAttribute('aria-label', 'Редактировать трату ' + zl(it.amount));
-      edit.addEventListener('click', function () {
-        editingId = it.id;
+      header.appendChild(headLeft);
+      header.appendChild(chevron);
+      header.addEventListener('click', function () {
+        collapsedPeriods[key] = expanded; // если сейчас развёрнуто — сворачиваем, и наоборот
         render();
       });
-      var del = document.createElement('button');
-      del.className = 'iconbtn del';
-      del.type = 'button';
-      del.textContent = '✕';
-      del.setAttribute('aria-label', 'Удалить трату ' + zl(it.amount));
-      del.addEventListener('click', function () {
-        delPhoto(it.id);
-        deleteDoc(doc(db, 'expenses', it.id));
-      });
-      acts.appendChild(edit);
-      acts.appendChild(del);
 
-      row.appendChild(info);
-      row.appendChild(acts);
-      list.appendChild(row);
+      var body = document.createElement('div');
+      body.className = 'period-body';
+      body.hidden = !expanded;
+
+      if (!itemsForPeriod.length) {
+        var pe = document.createElement('div');
+        pe.className = 'empty';
+        pe.textContent = 'Нет трат в этом периоде';
+        body.appendChild(pe);
+      } else {
+        itemsForPeriod.forEach(function (it) { renderEntry(body, it); });
+      }
+
+      group.appendChild(header);
+      group.appendChild(body);
+      list.appendChild(group);
     });
+  }
+
+  function renderEntry(container, it) {
+    var row = document.createElement('div');
+    row.className = 'entry';
+
+    if (editingId === it.id) {
+      row.className = 'entry editing';
+
+      var fields = document.createElement('div');
+      fields.className = 'edit-fields';
+      var amtInput = document.createElement('input');
+      amtInput.className = 'e-amt';
+      amtInput.type = 'text';
+      amtInput.setAttribute('inputmode', 'decimal');
+      amtInput.value = String(it.amount).replace('.', ',');
+      amtInput.setAttribute('aria-label', 'Сумма');
+      var noteInput = document.createElement('input');
+      noteInput.className = 'e-note';
+      noteInput.type = 'text';
+      noteInput.maxLength = 80;
+      noteInput.placeholder = 'Заметка (необязательно)';
+      noteInput.value = it.note || '';
+      noteInput.setAttribute('aria-label', 'Заметка');
+      fields.appendChild(amtInput);
+      fields.appendChild(noteInput);
+
+      // Фото в режиме редактирования
+      var photoRow = document.createElement('div');
+      photoRow.className = 'edit-photo';
+      var pendingBlob = null;      // новый выбранный файл
+      var removePhoto = false;     // пометка на удаление
+      var fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = 'image/*';
+      fileInput.hidden = true;
+
+      var previewWrap = document.createElement('div');
+      previewWrap.className = 'photo-preview';
+      previewWrap.hidden = true;
+      var previewImg = document.createElement('img');
+      previewImg.alt = 'Фото';
+      var previewRm = document.createElement('button');
+      previewRm.type = 'button';
+      previewRm.className = 'rm';
+      previewRm.textContent = '✕';
+      previewRm.setAttribute('aria-label', 'Убрать фото');
+      previewWrap.appendChild(previewImg);
+      previewWrap.appendChild(previewRm);
+
+      var photoBtn = document.createElement('button');
+      photoBtn.type = 'button';
+      photoBtn.className = 'photo-btn';
+
+      function refreshPhotoBtn() {
+        photoBtn.textContent = (previewWrap.hidden ? '📷 Добавить фото' : '📷 Заменить фото');
+      }
+      function showPreviewFromBlob(blob) {
+        var u = URL.createObjectURL(blob);
+        objectUrls.push(u);
+        previewImg.src = u;
+        previewWrap.hidden = false;
+        refreshPhotoBtn();
+      }
+      // показать существующее фото, если есть
+      if (it.hasPhoto) {
+        getPhoto(it.id).then(function (blob) {
+          if (blob && !removePhoto && !pendingBlob) showPreviewFromBlob(blob);
+        });
+      }
+      photoBtn.addEventListener('click', function () { fileInput.click(); });
+      fileInput.addEventListener('change', function () {
+        var f = fileInput.files && fileInput.files[0];
+        if (!f) return;
+        compress(f).then(function (blob) {
+          pendingBlob = blob;
+          removePhoto = false;
+          showPreviewFromBlob(blob);
+        }).catch(function () { alert('Не удалось обработать фото'); });
+      });
+      previewRm.addEventListener('click', function () {
+        pendingBlob = null;
+        removePhoto = true;
+        previewImg.removeAttribute('src');
+        previewWrap.hidden = true;
+        fileInput.value = '';
+        refreshPhotoBtn();
+      });
+      refreshPhotoBtn();
+      photoRow.appendChild(photoBtn);
+      photoRow.appendChild(previewWrap);
+      photoRow.appendChild(fileInput);
+
+      var actions = document.createElement('div');
+      actions.className = 'edit-actions';
+      var saveBtn = document.createElement('button');
+      saveBtn.className = 'esave';
+      saveBtn.type = 'button';
+      saveBtn.textContent = 'Сохранить';
+      var cancelBtn = document.createElement('button');
+      cancelBtn.className = 'ecancel';
+      cancelBtn.type = 'button';
+      cancelBtn.textContent = 'Отмена';
+      actions.appendChild(saveBtn);
+      actions.appendChild(cancelBtn);
+
+      function commitEdit() {
+        var v = parseFloat(amtInput.value.replace(',', '.'));
+        if (!isFinite(v) || v <= 0) { amtInput.focus(); return; }
+        var patch = {
+          amount: Math.round(v * 100) / 100,
+          note: noteInput.value.trim()
+        };
+
+        var photoOp = Promise.resolve();
+        if (pendingBlob) {
+          photoOp = putPhoto(it.id, pendingBlob);
+          patch.hasPhoto = true;
+        } else if (removePhoto) {
+          photoOp = delPhoto(it.id);
+          patch.hasPhoto = false;
+        }
+        photoOp.then(function () {
+          return updateDoc(doc(db, 'expenses', it.id), patch);
+        }).then(function () {
+          editingId = null;
+          render();
+        });
+      }
+      saveBtn.addEventListener('click', commitEdit);
+      amtInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') commitEdit(); });
+      noteInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') commitEdit(); });
+      cancelBtn.addEventListener('click', function () { editingId = null; render(); });
+
+      row.appendChild(fields);
+      row.appendChild(photoRow);
+      row.appendChild(actions);
+      container.appendChild(row);
+      return;
+    }
+
+    if (it.hasPhoto) {
+      var thumb = document.createElement('img');
+      thumb.className = 'thumb';
+      thumb.alt = 'Фото траты';
+      (function (id) {
+        getPhoto(id).then(function (blob) {
+          if (blob) { var u = URL.createObjectURL(blob); objectUrls.push(u); thumb.src = u; }
+        });
+      })(it.id);
+      thumb.addEventListener('click', function () { openModal(it.id); });
+      row.appendChild(thumb);
+    }
+
+    var info = document.createElement('div');
+    info.className = 'info';
+    var amt = document.createElement('div');
+    amt.className = 'amt';
+    amt.textContent = zl(it.amount);
+    var meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent = fmtFull.format(new Date(it.ts)) + (it.note ? ' · ' + it.note : '');
+    info.appendChild(amt);
+    info.appendChild(meta);
+
+    var acts = document.createElement('div');
+    acts.className = 'actions';
+    var edit = document.createElement('button');
+    edit.className = 'iconbtn edit';
+    edit.type = 'button';
+    edit.textContent = '✎';
+    edit.setAttribute('aria-label', 'Редактировать трату ' + zl(it.amount));
+    edit.addEventListener('click', function () {
+      editingId = it.id;
+      render();
+    });
+    var del = document.createElement('button');
+    del.className = 'iconbtn del';
+    del.type = 'button';
+    del.textContent = '✕';
+    del.setAttribute('aria-label', 'Удалить трату ' + zl(it.amount));
+    del.addEventListener('click', function () {
+      delPhoto(it.id);
+      deleteDoc(doc(db, 'expenses', it.id));
+    });
+    acts.appendChild(edit);
+    acts.appendChild(del);
+
+    row.appendChild(info);
+    row.appendChild(acts);
+    container.appendChild(row);
   }
 
   // --- Прикрепление фото в форме добавления ---
@@ -776,7 +913,7 @@
     if (e.target === this) closeModal();
   });
 
-  // --- Редактирование общего бюджета ---
+  // --- Редактирование бюджета текущего месячного периода ---
   // Поле открывается пустым; ввод +60 добавляет к текущей сумме, -60 вычитает,
   // а обычное число (без знака) заменяет бюджет целиком. Сохраняется одним
   // действием при закрытии поля (Enter/уход фокуса) — не на каждой нажатой клавише,
@@ -799,7 +936,8 @@
         var newTotal = isDelta ? TOTAL + v : v;
         if (newTotal > 0) {
           TOTAL = Math.round(newTotal * 100) / 100;
-          setDoc(budgetDocRef, { total: TOTAL });
+          budgetsCache[currentPeriodKey()] = TOTAL;
+          setDoc(doc(db, 'budgets', currentPeriodKey()), { total: TOTAL });
         }
       }
     }
@@ -827,9 +965,12 @@
     render();
   });
 
-  onSnapshot(budgetDocRef, function (snap) {
-    var data = snap.data();
-    TOTAL = (data && isFinite(data.total) && data.total > 0) ? data.total : DEFAULT_TOTAL;
+  onSnapshot(budgetsCol, function (snapshot) {
+    budgetsCache = {};
+    snapshot.docs.forEach(function (d) {
+      var data = d.data();
+      if (data && isFinite(data.total) && data.total > 0) budgetsCache[d.id] = data.total;
+    });
     render();
   });
 
