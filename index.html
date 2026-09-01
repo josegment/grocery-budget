@@ -1046,14 +1046,23 @@
     render();
   }
   document.getElementById('budgetBtn').addEventListener('click', openBudgetEdit);
-  // mousedown с preventDefault не даёт полю budgetInput потерять фокус (и сработать
-  // commitBudget через blur) раньше, чем отработает клик по самой кнопке режима
   ['modeSet', 'modeAdd', 'modeSub'].forEach(function (id) {
     var btn = document.getElementById(id);
-    btn.addEventListener('mousedown', function (e) { e.preventDefault(); });
-    btn.addEventListener('click', function () { setBudgetMode(btn.dataset.mode); });
+    btn.addEventListener('click', function () {
+      setBudgetMode(btn.dataset.mode);
+      document.getElementById('budgetInput').focus();
+    });
   });
-  document.getElementById('budgetInput').addEventListener('blur', commitBudget);
+  // На iOS blur у поля срабатывает раньше клика по кнопке режима (preventDefault на
+  // mousedown это не предотвращает), поэтому проверяем через небольшую задержку,
+  // куда реально ушёл фокус — если на одну из кнопок режима, ничего не закрываем
+  document.getElementById('budgetInput').addEventListener('blur', function () {
+    setTimeout(function () {
+      var active = document.activeElement;
+      if (active && (active.id === 'modeSet' || active.id === 'modeAdd' || active.id === 'modeSub')) return;
+      commitBudget();
+    }, 0);
+  });
   document.getElementById('budgetInput').addEventListener('keydown', function (e) {
     if (e.key === 'Enter') { e.preventDefault(); commitBudget(); }
     else if (e.key === 'Escape') {
