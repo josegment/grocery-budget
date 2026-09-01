@@ -74,8 +74,25 @@
   }
   .edit-icon:active { background: var(--line); color: var(--ink); }
   .budget-edit { margin-top: 12px; }
+  .budget-mode { display: flex; gap: 6px; margin-bottom: 8px; }
+  .bmode {
+    flex: 1;
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 650;
+    padding: 9px 4px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: var(--bg);
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .bmode.active { background: var(--ink); color: #fff; border-color: var(--ink); }
   .budget-edit .txt {
+    display: block;
+    box-sizing: border-box;
     width: 100%;
+    margin: 0;
     font: inherit;
     font-size: 22px;
     font-weight: 650;
@@ -85,7 +102,9 @@
     border-radius: 12px;
     background: var(--bg);
     color: var(--ink);
-    min-height: 52px;
+    height: 52px;
+    -webkit-appearance: none;
+    appearance: none;
   }
   .budget-edit .txt:focus { outline: 2px solid var(--green); outline-offset: -1px; border-color: transparent; }
 
@@ -348,7 +367,12 @@
     </div>
     <div class="sub" id="totalSub"></div>
     <div class="budget-edit" id="budgetEdit" hidden>
-      <input class="txt" id="budgetInput" type="text" inputmode="text" autocapitalize="off" autocorrect="off" placeholder="+60 добавить или новая сумма" aria-label="Общий бюджет, zł">
+      <div class="budget-mode">
+        <button type="button" class="bmode active" id="modeSet" data-mode="set">Заменить</button>
+        <button type="button" class="bmode" id="modeAdd" data-mode="add">Добавить</button>
+        <button type="button" class="bmode" id="modeSub" data-mode="sub">Отнять</button>
+      </div>
+      <input class="txt" id="budgetInput" type="text" inputmode="decimal" placeholder="Сумма, zł" aria-label="Сумма, zł">
     </div>
     <div class="stats">
       <div class="stat"><div class="v" id="daysLeft">—</div><div class="l">дней осталось</div></div>
@@ -983,14 +1007,22 @@
   });
 
   // --- Редактирование бюджета текущего месячного периода ---
-  // Поле открывается пустым; ввод +60 добавляет к текущей сумме, -60 вычитает,
-  // а обычное число (без знака) заменяет бюджет целиком. Сохраняется одним
-  // действием при закрытии поля (Enter/уход фокуса) — не на каждой нажатой клавише,
-  // чтобы промежуточные недописанные значения никогда не попадали на сервер.
+  // Три кнопки задают режим (заменить целиком / прибавить / отнять), а сумма
+  // всегда вводится на удобной цифровой клавиатуре — никаких знаков +/- печатать
+  // не нужно. Сохраняется одним действием при закрытии поля (Enter/уход фокуса).
+  var budgetMode = 'set';
+  function setBudgetMode(mode) {
+    budgetMode = mode;
+    ['modeSet', 'modeAdd', 'modeSub'].forEach(function (id) {
+      var btn = document.getElementById(id);
+      btn.classList.toggle('active', btn.dataset.mode === mode);
+    });
+  }
   function openBudgetEdit() {
     var inp = document.getElementById('budgetInput');
     inp.value = '';
-    inp.placeholder = 'сейчас ' + zl(TOTAL) + ' · +60 добавить';
+    inp.placeholder = 'сейчас ' + zl(TOTAL);
+    setBudgetMode('set');
     document.getElementById('budgetEdit').hidden = false;
     document.getElementById('budgetBtn').hidden = true;
     inp.focus();
@@ -999,10 +1031,9 @@
     var inp = document.getElementById('budgetInput');
     var raw = inp.value.trim();
     if (raw) {
-      var isDelta = raw[0] === '+' || raw[0] === '-';
       var v = parseFloat(raw.replace(',', '.'));
-      if (isFinite(v)) {
-        var newTotal = isDelta ? TOTAL + v : v;
+      if (isFinite(v) && v >= 0) {
+        var newTotal = budgetMode === 'add' ? TOTAL + v : (budgetMode === 'sub' ? TOTAL - v : v);
         if (newTotal > 0) {
           TOTAL = Math.round(newTotal * 100) / 100;
           budgetsCache[currentPeriodKey()] = TOTAL;
@@ -1015,6 +1046,13 @@
     render();
   }
   document.getElementById('budgetBtn').addEventListener('click', openBudgetEdit);
+  // mousedown с preventDefault не даёт полю budgetInput потерять фокус (и сработать
+  // commitBudget через blur) раньше, чем отработает клик по самой кнопке режима
+  ['modeSet', 'modeAdd', 'modeSub'].forEach(function (id) {
+    var btn = document.getElementById(id);
+    btn.addEventListener('mousedown', function (e) { e.preventDefault(); });
+    btn.addEventListener('click', function () { setBudgetMode(btn.dataset.mode); });
+  });
   document.getElementById('budgetInput').addEventListener('blur', commitBudget);
   document.getElementById('budgetInput').addEventListener('keydown', function (e) {
     if (e.key === 'Enter') { e.preventDefault(); commitBudget(); }
