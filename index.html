@@ -278,11 +278,10 @@
 
   <div class="grid">
     <div class="card">
-      <div class="k">На эту неделю</div>
+      <div class="k">Осталось на неделю</div>
       <div class="v" id="weekLeft">—</div>
       <div class="s" id="weekOf">—</div>
       <div class="bar"><div id="weekBar" class="ok"></div></div>
-      <div class="s" id="weekTitle">—</div>
     </div>
     <div class="card">
       <div class="k">Сумма на день</div>
@@ -635,11 +634,10 @@
     var weekAvailable = cumulativeBudget - spentBeforeThisWeek;
     var weekLeft = weekAvailable - weekSpent;
 
-    document.getElementById('weekTitle').textContent = 'Неделя ' + (idx + 1) + ' из ' + NUM_WEEKS;
     var elWeekLeft = document.getElementById('weekLeft');
     elWeekLeft.textContent = zl(weekLeft);
     elWeekLeft.classList.toggle('over', weekLeft < 0);
-    document.getElementById('weekOf').textContent = 'из ' + zl(weekAvailable);
+    document.getElementById('weekOf').textContent = 'потрачено ' + zl(weekSpent).replace(' zł', '') + ' из ' + zl(weekAvailable);
     document.getElementById('weekRange').textContent =
       fmtDay.format(wStart) + ' — ' + fmtDay.format(wEnd) + ' · потрачено ' + zl(weekSpent);
 
